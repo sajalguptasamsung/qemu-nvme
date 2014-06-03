@@ -115,6 +115,11 @@
 
 static void nvme_process_sq(void *opaque);
 
+static uint8_t lnvme_dev(NvmeCtrl *n)
+{
+    return (n->lnvme_opts != 0);
+}
+
 static int nvme_check_sqid(NvmeCtrl *n, uint16_t sqid)
 {
     return sqid < n->num_queues && n->sq[sqid] != NULL ? 0 : -1;
@@ -2018,8 +2023,8 @@ static void nvme_init_namespaces(NvmeCtrl *n)
         int lba_index;
         NvmeNamespace *ns = &n->namespaces[i];
         NvmeIdNs *id_ns = &ns->id_ns;
-
-        id_ns->nsfeat = 0;
+        
+        id_ns->nsfeat = lnvme_dev(n) ? 0x02 : 0x0;
         id_ns->nlbaf = n->nlbaf - 1;
         id_ns->flbas = n->lba_index | (n->extended << 4);
         id_ns->mc = n->mc;
@@ -2216,6 +2221,7 @@ static Property nvme_props[] = {
     DEFINE_PROP_UINT8("meta", NvmeCtrl, meta, 0),
     DEFINE_PROP_UINT16("oacs", NvmeCtrl, oacs, NVME_OACS_FORMAT),
     DEFINE_PROP_UINT16("oncs", NvmeCtrl, oncs, NVME_ONCS_DSM),
+    DEFINE_PROP_UINT8("lnvme_opts", NvmeCtrl, lnvme_opts, 0),
     DEFINE_PROP_END_OF_LIST(),
 };
 

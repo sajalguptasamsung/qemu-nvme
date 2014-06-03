@@ -766,6 +766,8 @@ typedef struct NvmeCtrl {
     QSIMPLEQ_HEAD(aer_queue, NvmeAsyncEvent) aer_queue;
     QEMUTimer   *aer_timer;
     uint8_t     aer_mask;
+
+    uint8_t     lnvme_opts;
 } NvmeCtrl;
 
 typedef struct NvmeDifTuple {
