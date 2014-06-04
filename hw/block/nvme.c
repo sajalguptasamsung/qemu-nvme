@@ -1003,6 +1003,16 @@ static uint16_t nvme_write_uncor(NvmeCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd,
     return NVME_SUCCESS;
 }
 
+static uint16_t lnvme_erase_sync(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
+{
+    return NVME_SUCCESS;
+}
+
+static uint16_t lnvme_erase_async(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
+{
+    return NVME_SUCCESS;
+}
+
 static uint16_t nvme_io_cmd(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
 {
     NvmeNamespace *ns;
@@ -1041,7 +1051,16 @@ static uint16_t nvme_io_cmd(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
             return nvme_write_uncor(n, ns, cmd, req);
         }
         return NVME_INVALID_OPCODE | NVME_DNR;
-
+    case LNVME_CMD_ERASE_SYNC:
+        if (lnvme_dev(n)) {
+            return lnvme_erase_sync(n, cmd, req);
+        }
+        return NVME_INVALID_OPCODE | NVME_DNR;
+    case LNVME_CMD_ERASE_ASYNC:
+        if (lnvme_dev(n)) {
+            return lnvme_erase_async(n, cmd, req);
+        }
+        return NVME_INVALID_OPCODE | NVME_DNR;
     default:
         return NVME_INVALID_OPCODE | NVME_DNR;
     }
@@ -1679,6 +1698,21 @@ static uint16_t nvme_format(NvmeCtrl *n, NvmeCmd *cmd)
         sec_erase);
 }
 
+static uint16_t lnvme_identify(NvmeCtrl *n, NvmeCmd *cmd)
+{
+    return NVME_SUCCESS;
+}
+
+static uint16_t lnvme_get_feature(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
+{
+    return NVME_SUCCESS;
+}
+
+static uint16_t lnvme_set_feature(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
+{
+    return NVME_SUCCESS;
+}
+
 static uint16_t nvme_admin_cmd(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
 {
     switch (cmd->opcode) {
@@ -1705,6 +1739,21 @@ static uint16_t nvme_admin_cmd(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
     case NVME_ADM_CMD_FORMAT_NVM:
         if (NVME_OACS_FORMAT & n->oacs) {
             return nvme_format(n, cmd);
+        }
+        return NVME_INVALID_OPCODE | NVME_DNR;
+    case LNVME_ADM_CMD_IDENTIFY:
+        if (lnvme_dev(n)) {
+            return lnvme_identify(n, cmd);
+        }
+        return NVME_INVALID_OPCODE | NVME_DNR;
+    case LNVME_ADM_CMD_GET_FEATURES:
+        if (lnvme_dev(n)) {
+            return lnvme_get_feature(n, cmd, req);
+        }
+        return NVME_INVALID_OPCODE | NVME_DNR;
+    case LNVME_ADM_CMD_SET_FEATURES:
+        if (lnvme_dev(n)) {
+            return lnvme_set_feature(n, cmd, req);
         }
         return NVME_INVALID_OPCODE | NVME_DNR;
     case NVME_ADM_CMD_ACTIVATE_FW:

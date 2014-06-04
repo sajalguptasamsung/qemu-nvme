@@ -172,6 +172,12 @@ enum NvmeAdminCommands {
     NVME_ADM_CMD_SECURITY_RECV  = 0x82,
 };
 
+enum LnvmeAdminCommands {
+    LNVME_ADM_CMD_IDENTIFY      = 0xc0,
+    LNVME_ADM_CMD_SET_FEATURES  = 0xc1,
+    LNVME_ADM_CMD_GET_FEATURES  = 0xc2,
+};
+
 enum NvmeIoCommands {
     NVME_CMD_FLUSH              = 0x00,
     NVME_CMD_WRITE              = 0x01,
@@ -179,6 +185,11 @@ enum NvmeIoCommands {
     NVME_CMD_WRITE_UNCOR        = 0x04,
     NVME_CMD_COMPARE            = 0x05,
     NVME_CMD_DSM                = 0x09,
+};
+
+enum LnvmeDmCommands {
+    LNVME_CMD_ERASE_SYNC        = 0x80,
+    LNVME_CMD_ERASE_ASYNC       = 0x81,
 };
 
 typedef struct NvmeDeleteQ {
