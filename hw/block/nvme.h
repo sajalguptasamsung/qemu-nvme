@@ -173,9 +173,12 @@ enum NvmeAdminCommands {
 };
 
 enum LnvmeAdminCommands {
-    LNVME_ADM_CMD_IDENTIFY      = 0xc0,
-    LNVME_ADM_CMD_SET_FEATURES  = 0xc1,
-    LNVME_ADM_CMD_GET_FEATURES  = 0xc2,
+    LNVME_ADM_CMD_IDENTIFY          = 0xc0,
+    LNVME_ADM_CMD_IDENTIFY_CHANNEL  = 0xc1,
+    LNVME_ADM_CMD_GET_FEATURES      = 0xc2,
+    LNVME_ADM_CMD_SET_FEATURES      = 0xc3,
+    LNVME_ADM_CMD_GET_L2P_TBL       = 0xc4,
+    LNVME_ADM_CMD_GET_P2L_TBL       = 0xc5,
 };
 
 enum NvmeIoCommands {
@@ -510,6 +513,46 @@ typedef struct NvmeIdCtrl {
     uint8_t     vs[1024];
 } NvmeIdCtrl;
 
+typedef struct LnvmeIdChannel {
+    uint64_t    queue_size;
+    uint64_t    page_size;
+    uint64_t    oob_size;
+    uint32_t    t_r;
+    uint32_t    t_sqr;
+    uint32_t    t_w;
+    uint32_t    t_sqw;
+    uint32_t    t_e;
+    uint8_t     io_sched;
+    uint64_t    laddr_begin;
+    uint64_t    laddr_end;
+    uint8_t     unused[194];/*UPDATE*/
+} LnvmeIdChannel;
+
+enum LnvmeNvmType {
+    NVM_BLOCK_ADDRESSABLE     = 0,
+    NVM_BYTE_ADDRESSABLE      = 1,
+};
+
+typedef struct LnvmeIdCtrl {
+    uint16_t           ver_id;
+    uint8_t            nvm_type;
+    uint16_t           nchannels;
+    uint8_t            unused[11];
+} LnvmeIdCtrl;
+
+enum LnvmeResponsibility {
+    LNVME_R_L2P         = 0,
+    LNVME_R_P2L         = 1,
+    LNVME_R_GC          = 2,
+    LNVME_R_ECC         = 3,
+};
+
+enum LnvmeExtension {
+    LNVME_EXT_BLK_MV    = 1 << 0,
+    LNVME_EXT_CPB       = 1 << 1,
+    LNVME_EXT_PS        = 2 << 2,
+};
+
 enum NvmeIdCtrlOacs {
     NVME_OACS_SECURITY  = 1 << 0,
     NVME_OACS_FORMAT    = 1 << 1,
@@ -715,6 +758,13 @@ typedef struct NvmeNamespace {
 #define NVME(obj) \
         OBJECT_CHECK(NvmeCtrl, (obj), TYPE_NVME)
 
+typedef struct LnvmeCtrl {
+    LnvmeIdCtrl     id_ctrl;
+    uint64_t        features[4];
+    uint64_t        extensions[4];
+    LnvmeIdChannel  *channels;
+} LnvmeCtrl;
+
 typedef struct NvmeCtrl {
     PCIDevice    parent_obj;
     MemoryRegion iomem;
@@ -778,7 +828,7 @@ typedef struct NvmeCtrl {
     QEMUTimer   *aer_timer;
     uint8_t     aer_mask;
 
-    uint8_t     lnvme_opts;
+    LnvmeCtrl     lnvme_ctrl;
 } NvmeCtrl;
 
 typedef struct NvmeDifTuple {

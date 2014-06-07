@@ -117,7 +117,7 @@ static void nvme_process_sq(void *opaque);
 
 static uint8_t lnvme_dev(NvmeCtrl *n)
 {
-    return (n->lnvme_opts != 0);
+    return (n->lnvme_ctrl.id_ctrl.ver_id != 0);
 }
 
 static int nvme_check_sqid(NvmeCtrl *n, uint16_t sqid)
@@ -1700,15 +1700,74 @@ static uint16_t nvme_format(NvmeCtrl *n, NvmeCmd *cmd)
 
 static uint16_t lnvme_identify(NvmeCtrl *n, NvmeCmd *cmd)
 {
+    uint64_t prp1 = le64_to_cpu(cmd->prp1);
+    uint64_t prp2 = le64_to_cpu(cmd->prp2);
+
+    return nvme_dma_read_prp(n, (uint8_t *)&n->lnvme_ctrl, sizeof(n->lnvme_ctrl),
+        prp1, prp2);
+}
+
+static uint16_t lnvme_identify_channel(NvmeCtrl *n, NvmeCmd *cmd)
+{
+    LnvmeIdChannel *channel;
+    uint32_t channel_num = le32_to_cpu(cmd->cdw10);
+    uint64_t prp1 = le64_to_cpu(cmd->prp1);
+    uint64_t prp2 = le64_to_cpu(cmd->prp2);
+    
+    if ( channel_num >= n->lnvme_ctrl.id_ctrl.nchannels ) {
+        return NVME_INVALID_FIELD | NVME_DNR;
+    }
+    
+    channel = &n->lnvme_ctrl.channels[channel_num];
+    return nvme_dma_read_prp(n, (uint8_t *)channel, sizeof(*channel), prp1, prp2);
+}
+
+static uint16_t lnvme_get_features(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
+{
+    uint64_t prp1 = le64_to_cpu(cmd->prp1);
+    uint64_t prp2 = le64_to_cpu(cmd->prp2);
+
+    return nvme_dma_read_prp(n, (uint8_t *)&n->lnvme_ctrl.features, 
+        sizeof(n->lnvme_ctrl.features) + sizeof(n->lnvme_ctrl.extensions), prp1, prp2);
+}
+
+static uint16_t lnvme_set_responsibility(NvmeCtrl *n, NvmeCmd *cmd)
+{
+    uint32_t rcode = le32_to_cpu(cmd->cdw10);
+    uint32_t bitval = le32_to_cpu(cmd->cdw11) & 0x1;
+    uint64_t rd, rm;
+
+    LnvmeCtrl *ln = &n->lnvme_ctrl;
+
+    if (rcode > 0xff) {
+        return NVME_INVALID_FIELD | NVME_DNR;
+    }
+
+    /*
+    switch(rcode) {
+    case 5:
+        return NVME_INVALID_FIELD | NVME_DNR;
+    }
+    */
+
+    rd = rcode ? (rcode / sizeof(uint64_t) * 8) : 0;
+    rm = rcode ? (rcode % sizeof(uint64_t) * 8) : 0;
+
+    if (bitval) {
+        ln->features[rd] |= (1<<rm);
+    } else {
+        ln->features[rd] &= ~(1<<rm);
+    }
+
     return NVME_SUCCESS;
 }
 
-static uint16_t lnvme_get_feature(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
+static uint16_t lnvme_get_l2p_tbl(NvmeCtrl *n, NvmeCmd *cmd)
 {
     return NVME_SUCCESS;
 }
 
-static uint16_t lnvme_set_feature(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
+static uint16_t lnvme_get_p2l_tbl(NvmeCtrl *n, NvmeCmd *cmd)
 {
     return NVME_SUCCESS;
 }
@@ -1746,14 +1805,29 @@ static uint16_t nvme_admin_cmd(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
             return lnvme_identify(n, cmd);
         }
         return NVME_INVALID_OPCODE | NVME_DNR;
+    case LNVME_ADM_CMD_IDENTIFY_CHANNEL:
+        if (lnvme_dev(n)) {
+            return lnvme_identify_channel(n, cmd);
+        }
+        return NVME_INVALID_OPCODE | NVME_DNR;
     case LNVME_ADM_CMD_GET_FEATURES:
         if (lnvme_dev(n)) {
-            return lnvme_get_feature(n, cmd, req);
+            return lnvme_get_features(n, cmd, req);
         }
         return NVME_INVALID_OPCODE | NVME_DNR;
     case LNVME_ADM_CMD_SET_FEATURES:
         if (lnvme_dev(n)) {
-            return lnvme_set_feature(n, cmd, req);
+            return lnvme_set_responsibility(n, cmd);
+        }
+        return NVME_INVALID_OPCODE | NVME_DNR;
+    case LNVME_ADM_CMD_GET_L2P_TBL:
+        if (lnvme_dev(n)) {
+            return lnvme_get_l2p_tbl(n, cmd);
+        }
+        return NVME_INVALID_OPCODE | NVME_DNR;
+    case LNVME_ADM_CMD_GET_P2L_TBL:
+        if (lnvme_dev(n)) {
+            return lnvme_get_p2l_tbl(n, cmd);
         }
         return NVME_INVALID_OPCODE | NVME_DNR;
     case NVME_ADM_CMD_ACTIVATE_FW:
@@ -2192,6 +2266,13 @@ static void nvme_init_pci(NvmeCtrl *n)
     msi_init(&n->parent_obj, 0x50, 32, true, false);
 }
 
+static int lnvme_init(NvmeCtrl *n)
+{
+    LnvmeIdCtrl *ln = &n->lnvme_ctrl.id_ctrl;
+    n->lnvme_ctrl.channels = g_malloc0(sizeof(LnvmeIdChannel) * ln->nchannels);
+    return 0;
+}
+
 static int nvme_init(PCIDevice *pci_dev)
 {
     NvmeCtrl *n = NVME(pci_dev);
@@ -2222,8 +2303,15 @@ static int nvme_init(PCIDevice *pci_dev)
     nvme_init_pci(n);
     nvme_init_ctrl(n);
     nvme_init_namespaces(n);
-
+    if (lnvme_dev(n)) {
+        lnvme_init(n);
+    }
     return 0;
+}
+
+static void lnvme_exit(NvmeCtrl *n)
+{
+    g_free(n->lnvme_ctrl.channels);
 }
 
 static void nvme_exit(PCIDevice *pci_dev)
@@ -2239,6 +2327,10 @@ static void nvme_exit(PCIDevice *pci_dev)
     g_free(n->sq);
     msix_uninit_exclusive_bar(pci_dev);
     memory_region_destroy(&n->iomem);
+
+    if (lnvme_dev(n)) {
+        lnvme_exit(n);
+    }
 }
 
 static Property nvme_props[] = {
@@ -2270,7 +2362,9 @@ static Property nvme_props[] = {
     DEFINE_PROP_UINT8("meta", NvmeCtrl, meta, 0),
     DEFINE_PROP_UINT16("oacs", NvmeCtrl, oacs, NVME_OACS_FORMAT),
     DEFINE_PROP_UINT16("oncs", NvmeCtrl, oncs, NVME_ONCS_DSM),
-    DEFINE_PROP_UINT8("lnvme_opts", NvmeCtrl, lnvme_opts, 0),
+    DEFINE_PROP_UINT16("lver", NvmeCtrl, lnvme_ctrl.id_ctrl.ver_id, 0),
+    DEFINE_PROP_UINT8("ltype", NvmeCtrl, lnvme_ctrl.id_ctrl.nvm_type, NVM_BLOCK_ADDRESSABLE),
+    DEFINE_PROP_UINT16("lchannels", NvmeCtrl, lnvme_ctrl.id_ctrl.nchannels, 16),
     DEFINE_PROP_END_OF_LIST(),
 };
 
