@@ -2268,8 +2268,25 @@ static void nvme_init_pci(NvmeCtrl *n)
 
 static int lnvme_init(NvmeCtrl *n)
 {
-    LnvmeIdCtrl *ln = &n->lnvme_ctrl.id_ctrl;
+    LnvmeIdCtrl *ln;
+    LnvmeIdChannel *c;
+    unsigned int i;
+    uint64_t chnl_size = n->ns_size;
+    ln = &n->lnvme_ctrl.id_ctrl;
+    
     n->lnvme_ctrl.channels = g_malloc0(sizeof(LnvmeIdChannel) * ln->nchannels);
+    for (i = 0; i < ln->nchannels; i++) {
+	    c = &n->lnvme_ctrl.channels[i];
+	    c->queue_size = 64;
+	    c->gran_read = c->gran_write = c->gran_erase = 4096;
+	    c->oob_size = 0;
+	    c->t_r = c->t_sqr = 10000;
+	    c->t_w = c->t_sqw = 10000;
+	    c->t_e = 100000;
+	    c->io_sched = LNVME_IOSCHED_CHANNEL;
+	    c->laddr_begin = chnl_size * i;
+	    c->laddr_end = c->laddr_begin + chnl_size;
+    }
     return 0;
 }
 

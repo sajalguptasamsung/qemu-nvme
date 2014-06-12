@@ -513,9 +513,16 @@ typedef struct NvmeIdCtrl {
     uint8_t     vs[1024];
 } NvmeIdCtrl;
 
+enum LnvmeIoSched {
+    LNVME_IOSCHED_CHANNEL	= 0,
+    LNVME_IOSCHED_CHIP		= 1,
+};
+
 typedef struct LnvmeIdChannel {
     uint64_t    queue_size;
-    uint64_t    page_size;
+    uint64_t	gran_read;
+    uint64_t	gran_write;
+    uint64_t	gran_erase;
     uint64_t    oob_size;
     uint32_t    t_r;
     uint32_t    t_sqr;
@@ -525,7 +532,7 @@ typedef struct LnvmeIdChannel {
     uint8_t     io_sched;
     uint64_t    laddr_begin;
     uint64_t    laddr_end;
-    uint8_t     unused[194];/*UPDATE*/
+    uint8_t     unused[4034];
 } LnvmeIdChannel;
 
 enum LnvmeNvmType {
