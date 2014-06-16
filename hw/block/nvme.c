@@ -1003,14 +1003,82 @@ static uint16_t nvme_write_uncor(NvmeCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd,
     return NVME_SUCCESS;
 }
 
-static uint16_t lnvme_erase_sync(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
-{
+static uint16_t lnvme_erase_sync(NvmeCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd, NvmeRequest *req)
+{/*TODO: do not know if metadata is relevant in this context - what is it ?*/
+    NvmeRwCmd *rw = (NvmeRwCmd *)cmd;
+    uint64_t slba = le64_to_cpu(rw->slba);
+    uint32_t nlb = le16_to_cpu(rw->nlb) + 1;
+    const uint8_t lba_index = NVME_ID_NS_FLBAS_INDEX(ns->id_ns.flbas);
+    const uint8_t data_shift = ns->id_ns.lbaf[lba_index].ds;
+    uint32_t nlb_blk = nlb << (data_shift - BDRV_SECTOR_BITS);
+    uint64_t start = ns->start_block + (slba << (data_shift - BDRV_SECTOR_BITS));
+
+    if ((slba + nlb) > ns->id_ns.nsze) {
+	    nvme_set_error_page(n, req->sq->sqid, cmd->cid, NVME_LBA_RANGE,
+			    offsetof(NvmeRwCmd, nlb), slba+nlb, ns->id);
+	    return NVME_LBA_RANGE | NVME_DNR;
+    }
+    bitmap_set(ns->util, slba, nlb);
+    bitmap_clear(ns->uncorrectable, slba, nlb);
+
+    if (bdrv_write_zeroes(n->conf.bs, start, nlb_blk, 0)) {
+	    nvme_set_error_page(n, req->sq->sqid, req->cqe.cid, NVME_INTERNAL_DEV_ERROR,
+			    offsetof(NvmeRwCmd, slba), req->slba, ns->id);
+	    bitmap_clear(ns->util, slba, nlb);
+         return NVME_INTERNAL_DEV_ERROR;
+    }
     return NVME_SUCCESS;
 }
 
-static uint16_t lnvme_erase_async(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
+static void erase_io_complete_cb(void *opaque, int ret)
 {
-    return NVME_SUCCESS;
+    NvmeRequest *req = opaque;
+    NvmeSQueue *sq = req->sq;
+    NvmeCtrl *n = sq->ctrl;
+    NvmeCQueue *cq = n->cq[sq->cqid];
+    NvmeNamespace *ns = req->ns;
+
+    bdrv_acct_done(n->conf.bs, &req->acct);
+    if (!ret) {
+        req->status = NVME_SUCCESS;
+    } else {
+	req->status = NVME_INTERNAL_DEV_ERROR;
+    }
+
+    if (req->status != NVME_SUCCESS) {
+	nvme_set_error_page(n, sq->sqid, req->cqe.cid, req->status,
+			offsetof(NvmeRwCmd, slba), req->slba, ns->id);
+	bitmap_clear(ns->util, req->slba, req->nlb);
+    }
+    nvme_enqueue_req_completion(cq, req);
+}
+
+static uint16_t lnvme_erase_async(NvmeCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd, NvmeRequest *req)
+{/*TODO do not know if metadata is relevant in this context, what is it ? */
+    NvmeRwCmd *rw = (NvmeRwCmd *)cmd;
+    const uint8_t lba_index = NVME_ID_NS_FLBAS_INDEX(ns->id_ns.flbas);
+    const uint8_t data_shift = ns->id_ns.lbaf[lba_index].ds;
+    uint64_t slba = le64_to_cpu(rw->slba);
+    uint64_t start = ns->start_block + (slba << (data_shift - BDRV_SECTOR_BITS));
+    uint32_t nlb = le16_to_cpu(rw->nlb) + 1;
+    uint32_t nlb_blk = nlb << (data_shift - BDRV_SECTOR_BITS);
+
+    if ((slba + nlb) > le64_to_cpu(ns->id_ns.nsze)) {
+	    nvme_set_error_page(n, req->sq->sqid, cmd->cid, NVME_LBA_RANGE,
+			    offsetof(NvmeRwCmd, nlb), slba + nlb, ns->id);
+	    return NVME_LBA_RANGE | NVME_DNR;
+    }
+
+    bitmap_set(ns->util, slba, nlb);
+    bitmap_clear(ns->uncorrectable, slba, nlb);
+
+    bdrv_acct_start(n->conf.bs, &req->acct, nlb_blk << BDRV_SECTOR_BITS, BDRV_ACCT_WRITE);
+
+    req->nlb = nlb;
+    req->ns = ns;
+    req->aiocb = bdrv_aio_write_zeroes(n->conf.bs, start, nlb_blk, 0, erase_io_complete_cb, req);
+
+    return NVME_NO_COMPLETE;
 }
 
 static uint16_t nvme_io_cmd(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
@@ -1053,12 +1121,12 @@ static uint16_t nvme_io_cmd(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
         return NVME_INVALID_OPCODE | NVME_DNR;
     case LNVME_CMD_ERASE_SYNC:
         if (lnvme_dev(n)) {
-            return lnvme_erase_sync(n, cmd, req);
+	    return lnvme_erase_sync(n, ns, cmd, req);
         }
         return NVME_INVALID_OPCODE | NVME_DNR;
     case LNVME_CMD_ERASE_ASYNC:
         if (lnvme_dev(n)) {
-            return lnvme_erase_async(n, cmd, req);
+	    return lnvme_erase_async(n, ns, cmd, req);
         }
         return NVME_INVALID_OPCODE | NVME_DNR;
     default:
