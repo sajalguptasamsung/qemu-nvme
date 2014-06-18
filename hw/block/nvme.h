@@ -759,6 +759,7 @@ typedef struct NvmeNamespace {
     uint32_t        id;
     uint64_t        start_block;
     uint64_t        meta_start_offset;
+    uint64_t        tbl_start_offset;
 } NvmeNamespace;
 
 #define TYPE_NVME "nvme"

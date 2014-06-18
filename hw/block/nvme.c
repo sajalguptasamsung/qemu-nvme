@@ -1684,6 +1684,27 @@ static uint16_t nvme_abort_req(NvmeCtrl *n, NvmeCmd *cmd, uint32_t *result)
     return NVME_SUCCESS;
 }
 
+static void lnvme_partition_ns(NvmeCtrl *n, NvmeNamespace *ns, uint8_t lba_index, uint64 *blks)
+{
+    uint32_t entry_siz, tbl_cap, nunits;
+    uint64_t unit_siz, tbl_blk_siz, leftover;
+    NvmeIdNs *id_ns = &ns->id_ns;
+
+    entry_siz = (1 << id_ns->lbaf[lba_index].ds) + n->meta;
+    tbl_blk_siz = BDRV_SECTOR_SIZE;
+    tbl_cap = tbl_blk_siz / sizeof(uint32_t);
+    unit_siz = tbl_blk_siz + (tbl_cap * entry_siz);
+    nunits = n->ns_size / unit_siz;
+
+    leftover = n->ns_size - (nunits * unit_siz);
+
+    *blks = nunits * tbl_cap;
+    if (leftover > (entry_siz + tbl_blk_siz)) {
+        leftover -= tbl_blk_siz;
+        *blks += leftover / entry_siz;
+    }
+}
+
 static uint16_t nvme_format_namespace(NvmeNamespace *ns, uint8_t lba_idx,
     uint8_t meta_loc, uint8_t pil, uint8_t pi, uint8_t sec_erase)
 {
@@ -1713,13 +1734,20 @@ static uint16_t nvme_format_namespace(NvmeNamespace *ns, uint8_t lba_idx,
 
     g_free(ns->util);
     g_free(ns->uncorrectable);
-    blks = ns->ctrl->ns_size / ((1 << ns->id_ns.lbaf[lba_idx].ds) +
-                ns->ctrl->meta);
+    if (lnvme_dev(ns->ctrl)) {
+        lnvme_partition_ns(ns->ctrl, ns, lba_idx, &blks);
+    } else {
+        blks = ns->ctrl->ns_size / ((1 << ns->id_ns.lbaf[lba_idx].ds) +
+                   ns->ctrl->meta);
+    }
     ns->id_ns.flbas = lba_idx | meta_loc;
-    ns->id_ns.nsze = cpu_to_le64(blks);
-    ns->id_ns.ncap = ns->id_ns.nsze;
-    ns->id_ns.nuse = ns->id_ns.nsze;
+    ns->id_ns.nsze = ns->id_ns.ncap = ns->id_ns.nuse = cpu_to_le64(blks);
     ns->id_ns.dps = pil | pi;
+    ns->meta_start_offset = (ns->start_block << BDRV_SECTOR_BITS)
+                + (blks * (1 << ns->id_ns.lbaf[lba_idx].ds));
+    if (lnvme_dev(ns->ctrl)) {
+        ns->tbl_start_offset = ns->meta_start_offset + (blks * ns->ctrl->meta);
+    }
     ns->util = bitmap_new(blks);
     ns->uncorrectable = bitmap_new(blks);
 
@@ -2211,10 +2239,10 @@ static void nvme_init_namespaces(NvmeCtrl *n)
 
     for (i = 0; i < n->num_namespaces; i++) {
         uint64_t blks, bdrv_blks;
-        int lba_index;
+        uint8_t lba_index;
         NvmeNamespace *ns = &n->namespaces[i];
         NvmeIdNs *id_ns = &ns->id_ns;
-        
+
         id_ns->nsfeat = lnvme_dev(n) ? 0x02 : 0x0;
         id_ns->nlbaf = n->nlbaf - 1;
         id_ns->flbas = n->lba_index | (n->extended << 4);
@@ -2232,7 +2260,11 @@ static void nvme_init_namespaces(NvmeCtrl *n)
         }
 
         lba_index = NVME_ID_NS_FLBAS_INDEX(ns->id_ns.flbas);
-        blks = n->ns_size / ((1 << id_ns->lbaf[lba_index].ds) + n->meta);
+        if (lnvme_dev(n)) {
+           lnvme_partition_ns(n, ns, lba_index, &blks);
+        } else {
+           blks = n->ns_size / ((1 << id_ns->lbaf[lba_index].ds) + n->meta);
+        }
         id_ns->nuse = id_ns->ncap = id_ns->nsze = cpu_to_le64(blks);
         bdrv_blks = blks << (id_ns->lbaf[lba_index].ds - BDRV_SECTOR_BITS);
 
@@ -2241,6 +2273,9 @@ static void nvme_init_namespaces(NvmeCtrl *n)
         ns->start_block = ((n->ns_size >> BDRV_SECTOR_BITS) +
             (n->meta * bdrv_blks)) * i;
         ns->meta_start_offset = (ns->start_block + bdrv_blks) << BDRV_SECTOR_BITS;
+        if (lnvme_dev(n)) {
+	    ns->tbl_start_offset = ns->meta_start_offset + (blks * n->meta);
+        }
         ns->util = bitmap_new(blks);
         ns->uncorrectable = bitmap_new(blks);
     }
