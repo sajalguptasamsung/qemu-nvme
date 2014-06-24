@@ -99,6 +99,7 @@
 #include <hw/pci/pci.h>
 #include <qemu/bitops.h>
 #include <qemu/bitmap.h>
+#include <qemu/main-loop.h>
 
 #include "nvme.h"
 
@@ -642,6 +643,16 @@ static void nvme_interleave_sgl(NvmeCtrl *n, QEMUSGList *qsg, uint8_t *buf,
     }
 }
 
+static void update_tbl_range(NvmeNamespace *ns, uint32_t tbl_off, uint32_t host_lba, uint16_t nlb)
+{
+    uint32_t i;
+    assert((tbl_off + nlb) < (ns->tbl_entries - 1));
+
+    for(i = tbl_off; i < (tbl_off+nlb); i++) {
+        ns->tbl[i] = host_lba++;
+    }
+}
+
 static void nvme_rw_cb(void *opaque, int ret)
 {
     NvmeRequest *req = opaque;
@@ -683,10 +694,19 @@ static void nvme_rw_cb(void *opaque, int ret)
         if (req->is_write) {
             bitmap_clear(ns->util, req->slba, req->nlb);
         }
+    } else {
+        if (req->is_write) {
+            update_tbl_range(ns, req->slba, req->host_lba, req->nlb);
+        }
     }
 
     qemu_sglist_destroy(&req->qsg);
     nvme_enqueue_req_completion(cq, req);
+}
+
+static uint32_t host_lba(NvmeCmd *cmd)
+{
+    return (cmd->cdw13 & 0xffffff00) | ((cmd->cdw12 >> 16) & 0xff);
 }
 
 static uint16_t nvme_rw(NvmeCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd,
@@ -769,6 +789,9 @@ static uint16_t nvme_rw(NvmeCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd,
         bitmap_set(ns->util, slba, nlb);
         bitmap_clear(ns->uncorrectable, slba, nlb);
     }
+    if (req->is_write && lnvme_dev(n)) {
+        req->host_lba = host_lba(cmd);
+    }
     if (!separate && (!(ctrl & NVME_RW_PRINFO_PRACT) ||
             ms != sizeof(NvmeDifTuple))) {
         meta_size = req->qsg.size % BDRV_SECTOR_SIZE;
@@ -840,6 +863,9 @@ static uint16_t nvme_rw(NvmeCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd,
                     req->slba, ns->id);
 
                 return NVME_INTERNAL_DEV_ERROR;
+            }
+            if(lnvme_dev(n)) {
+                update_tbl_range(ns, req->slba, req->host_lba, nlb);
             }
         }
 
@@ -1004,7 +1030,7 @@ static uint16_t nvme_write_uncor(NvmeCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd,
 }
 
 static uint16_t lnvme_erase_sync(NvmeCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd, NvmeRequest *req)
-{/*TODO: do not know if metadata is relevant in this context - what is it ?*/
+{
     NvmeRwCmd *rw = (NvmeRwCmd *)cmd;
     uint64_t slba = le64_to_cpu(rw->slba);
     uint32_t nlb = le16_to_cpu(rw->nlb) + 1;
@@ -1054,7 +1080,7 @@ static void erase_io_complete_cb(void *opaque, int ret)
 }
 
 static uint16_t lnvme_erase_async(NvmeCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd, NvmeRequest *req)
-{/*TODO do not know if metadata is relevant in this context, what is it ? */
+{
     NvmeRwCmd *rw = (NvmeRwCmd *)cmd;
     const uint8_t lba_index = NVME_ID_NS_FLBAS_INDEX(ns->id_ns.flbas);
     const uint8_t data_shift = ns->id_ns.lbaf[lba_index].ds;
@@ -1735,6 +1761,7 @@ static uint16_t nvme_format_namespace(NvmeNamespace *ns, uint8_t lba_idx,
     g_free(ns->util);
     g_free(ns->uncorrectable);
     if (lnvme_dev(ns->ctrl)) {
+        g_free(ns->tbl);
         lnvme_partition_ns(ns->ctrl, ns, lba_idx, &blks);
     } else {
         blks = ns->ctrl->ns_size / ((1 << ns->id_ns.lbaf[lba_idx].ds) +
@@ -1746,7 +1773,9 @@ static uint16_t nvme_format_namespace(NvmeNamespace *ns, uint8_t lba_idx,
     ns->meta_start_offset = (ns->start_block << BDRV_SECTOR_BITS)
                 + (blks * (1 << ns->id_ns.lbaf[lba_idx].ds));
     if (lnvme_dev(ns->ctrl)) {
-        ns->tbl_start_offset = ns->meta_start_offset + (blks * ns->ctrl->meta);
+        ns->tbl_dsk_start_offset = ns->meta_start_offset + (blks * ns->ctrl->meta);
+        ns->tbl_entries = blks;
+        ns->tbl = g_malloc0(sizeof(uint32)*blks);
     }
     ns->util = bitmap_new(blks);
     ns->uncorrectable = bitmap_new(blks);
@@ -1858,14 +1887,199 @@ static uint16_t lnvme_set_responsibility(NvmeCtrl *n, NvmeCmd *cmd)
     return NVME_SUCCESS;
 }
 
-static uint16_t lnvme_get_l2p_tbl(NvmeCtrl *n, NvmeCmd *cmd)
+static uint16_t lnvme_get_l2p_tbl(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
 {
     return NVME_SUCCESS;
 }
 
-static uint16_t lnvme_get_p2l_tbl(NvmeCtrl *n, NvmeCmd *cmd)
+typedef struct AIOTblRequest AIOTblRequest;
+typedef int LNVMETblIOFunc(AIOTblRequest *treq);
+
+struct AIOTblRequest {
+    int sg_cur_ndx;
+    dma_addr_t sg_cur_byte;
+    QEMUIOVector iov;
+    QEMUSGList *sg;
+    QEMUBH *bh;
+    size_t b_copied;
+    LNVMETblIOFunc *io_func;
+    NvmeRequest *req;
+};
+
+static void lnvme_treq_sched_retry(void *);
+
+static void lnvme_treq_map(AIOTblRequest *treq)
 {
-    return NVME_SUCCESS;
+    dma_addr_t cur_addr, cur_len;
+    int iovs_mapped;
+    void *buf;
+    QEMUSGList *qsg = treq->sg;
+
+map_more:
+    cur_addr = cur_len = 0;
+    iovs_mapped = 0;
+    buf = NULL;
+
+    if (treq->sg_cur_ndx == qsg->nsg) {
+        if (treq->b_copied == qsg->size) {
+            return;
+        } else {
+            goto copy;
+        }
+    }
+
+    while (treq->sg_cur_ndx < treq->sg->nsg) {
+        cur_addr = qsg->sg[treq->sg_cur_ndx].base + treq->sg_cur_byte;
+        cur_len = qsg->sg[treq->sg_cur_ndx].len - treq->sg_cur_byte;
+        buf = dma_memory_map(qsg->as, cur_addr, &cur_len, DMA_DIRECTION_FROM_DEVICE);
+        if (!buf)
+            break; /* mapping addressing space failed - resources exhausted */
+        qemu_iovec_add(&treq->iov, buf, cur_len);
+        iovs_mapped++;
+        treq->sg_cur_byte += cur_len;
+        if (treq->sg_cur_byte == qsg->sg[treq->sg_cur_ndx].len) {
+            treq->sg_cur_byte = 0;
+            ++treq->sg_cur_ndx;
+        }
+    }
+
+    if (!iovs_mapped) {
+        cpu_register_map_client(treq, lnvme_treq_sched_retry);
+        return;
+    }
+
+copy:
+    if (treq->io_func(treq)) {
+        goto map_more;
+    }
+}
+
+static void lnvme_treq_retry_map(void *opaque)
+{
+    AIOTblRequest *treq = opaque;
+    qemu_bh_delete(treq->bh);
+    treq->bh = NULL;
+
+    lnvme_treq_map(treq);
+}
+
+static void lnvme_treq_sched_retry(void *opaque)
+{
+    AIOTblRequest *treq = opaque;
+    treq->bh = qemu_bh_new(lnvme_treq_retry_map, treq);
+    qemu_bh_schedule(treq->bh);
+}
+
+static int lnvme_treq_unmap(AIOTblRequest *treq, size_t offset, size_t len)
+{
+    int unmapped = 0;
+    unsigned int i;
+    QEMUIOVector *qiov = &treq->iov;
+    struct iovec *iov = qiov->iov;
+
+    for (i = 0; len && i < qiov->niov; i++) {
+        if (offset < iov[i].iov_len) {
+            assert(iov[i].iov_len <= len);
+            len -= iov[i].iov_len;
+            dma_memory_unmap(treq->sg->as,
+                iov[i].iov_base, iov[i].iov_len,
+                DMA_DIRECTION_FROM_DEVICE, iov[i].iov_len);
+            unmapped++;
+        } else {
+            offset -= iov[i].iov_len;
+        }
+    }
+    return unmapped;
+}
+
+static void lnvme_treq_done(void *opaque)
+{
+    AIOTblRequest *treq = opaque;
+    NvmeRequest *req = treq->req;
+    NvmeSQueue *sq = req->sq;
+    NvmeCtrl *n = req->sq->ctrl;
+    NvmeCQueue *cq = n->cq[sq->cqid];
+
+    qemu_bh_delete(treq->bh);
+    treq->bh = NULL;
+
+    qemu_iovec_destroy(&treq->iov);
+    qemu_sglist_destroy(treq->sg);
+    treq->req->status = NVME_SUCCESS;
+    nvme_enqueue_req_completion(cq, treq->req);
+    g_free(treq);
+}
+
+static int lnvme_treq_do_copy(AIOTblRequest *treq)
+{
+    size_t start, copied;
+    void *tbl = treq->req->ns->tbl;
+    start = treq->b_copied;
+
+    copied = qemu_iovec_from_buf(
+        &treq->iov, start, tbl,
+        (treq->iov.size - treq->b_copied));
+    treq->b_copied += copied;
+
+    lnvme_treq_unmap(treq, start, copied);
+    if (treq->b_copied == treq->sg->size) {
+        treq->bh = qemu_bh_new(lnvme_treq_done, treq);
+        qemu_bh_schedule(treq->bh);
+        return 0;
+    } else {
+        return 1;
+    }
+}
+
+static void coroutine_fn lnvme_treq_copy(void *opaque)
+{
+    NvmeRequest *req = opaque;
+    AIOTblRequest *treq = g_malloc0(sizeof(AIOTblRequest));
+    treq->req = req;
+    treq->sg = &req->qsg;
+    qemu_iovec_init(&treq->iov, treq->sg->nsg);
+    treq->io_func = lnvme_treq_do_copy;
+
+    lnvme_treq_map(treq);
+    return;
+}
+
+static uint16_t lnvme_get_p2l_tbl(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
+{
+    NvmeNamespace *ns;
+    LnvmeGetTbl *gtbl = (LnvmeGetTbl*)cmd;
+    uint64_t slba = le16_to_cpu(gtbl->slba);
+    uint16_t nlb = le16_to_cpu(gtbl->nlb+1);
+    uint64_t prp1 = le64_to_cpu(gtbl->prp1);
+    uint64_t prp2 = le64_to_cpu(gtbl->prp2);
+    uint32_t nsid = le32_to_cpu(gtbl->nsid);
+    Coroutine *co;
+
+    if (nsid == 0 || nsid > n->num_namespaces) {
+        return NVME_INVALID_NSID | NVME_DNR;
+    }
+    ns = &n->namespaces[nsid-1];
+
+    if ((ns->tbl + nlb) >= (ns->tbl + ns->tbl_entries)) {
+        nvme_set_error_page(n, req->sq->sqid, cmd->cid, NVME_INVALID_FIELD,
+                        offsetof(LnvmeGetTbl, nlb), 0, ns->id);
+        return NVME_INVALID_FIELD | NVME_DNR;
+    }
+    if (nvme_map_prp(&req->qsg, prp1, prp2, (nlb << BDRV_SECTOR_BITS), n)) {
+        nvme_set_error_page(n, req->sq->sqid, cmd->cid, NVME_INVALID_FIELD,
+                            offsetof(LnvmeGetTbl, prp1), 0, ns->id);
+        return NVME_INVALID_FIELD | NVME_DNR;
+    }
+
+    req->slba = slba;
+    req->nlb = nlb;
+    req->ns = ns;
+    req->meta_size = 0;
+    req->status = NVME_SUCCESS;
+
+    co = qemu_coroutine_create(lnvme_treq_copy);
+    qemu_coroutine_enter(co, req);
+    return NVME_NO_COMPLETE;
 }
 
 static uint16_t nvme_admin_cmd(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
@@ -1918,12 +2132,12 @@ static uint16_t nvme_admin_cmd(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
         return NVME_INVALID_OPCODE | NVME_DNR;
     case LNVME_ADM_CMD_GET_L2P_TBL:
         if (lnvme_dev(n)) {
-            return lnvme_get_l2p_tbl(n, cmd);
+		return lnvme_get_l2p_tbl(n, cmd, req);
         }
         return NVME_INVALID_OPCODE | NVME_DNR;
     case LNVME_ADM_CMD_GET_P2L_TBL:
         if (lnvme_dev(n)) {
-            return lnvme_get_p2l_tbl(n, cmd);
+		return lnvme_get_p2l_tbl(n, cmd, req);
         }
         return NVME_INVALID_OPCODE | NVME_DNR;
     case NVME_ADM_CMD_ACTIVATE_FW:
@@ -2274,7 +2488,9 @@ static void nvme_init_namespaces(NvmeCtrl *n)
             (n->meta * bdrv_blks)) * i;
         ns->meta_start_offset = (ns->start_block + bdrv_blks) << BDRV_SECTOR_BITS;
         if (lnvme_dev(n)) {
-	    ns->tbl_start_offset = ns->meta_start_offset + (blks * n->meta);
+	    ns->tbl_dsk_start_offset = ns->meta_start_offset + (blks * n->meta);
+	    ns->tbl_entries = blks;
+	    ns->tbl = g_malloc0(sizeof(uint32_t)*blks);
         }
         ns->util = bitmap_new(blks);
         ns->uncorrectable = bitmap_new(blks);

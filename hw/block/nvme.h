@@ -195,6 +195,19 @@ enum LnvmeDmCommands {
     LNVME_CMD_ERASE_ASYNC       = 0x81,
 };
 
+typedef struct LnvmeGetTbl {
+    uint8_t opcode;
+    uint8_t flags;
+    uint16_t cid;
+    uint32_t nsid;
+    uint32_t rsvd1[3];
+    uint64_t prp1;
+    uint64_t prp2;
+    uint64_t slba;
+    uint16_t nlb;
+    uint16_t rsvd2[7];
+} LnvmeGetTbl;
+
 typedef struct NvmeDeleteQ {
     uint8_t     opcode;
     uint8_t     flags;
@@ -707,6 +720,7 @@ typedef struct NvmeRequest {
     uint64_t                meta_size;
     uint64_t                mptr;
     void                    *meta_buf;
+    uint32_t                host_lba;
     NvmeCqe                 cqe;
     BlockAcctCookie         acct;
     QEMUSGList              qsg;
@@ -759,7 +773,9 @@ typedef struct NvmeNamespace {
     uint32_t        id;
     uint64_t        start_block;
     uint64_t        meta_start_offset;
-    uint64_t        tbl_start_offset;
+    uint64_t        tbl_dsk_start_offset;
+    uint32_t        tbl_entries;
+    uint32_t        *tbl;
 } NvmeNamespace;
 
 #define TYPE_NVME "nvme"
