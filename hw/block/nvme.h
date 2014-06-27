@@ -545,8 +545,8 @@ typedef struct LnvmeIdChannel {
     uint8_t     io_sched;
     uint64_t    laddr_begin;
     uint64_t    laddr_end;
-    uint8_t     unused[4034];
-} LnvmeIdChannel;
+    uint8_t     unused[4019];
+} QEMU_PACKED LnvmeIdChannel;
 
 enum LnvmeNvmType {
     NVM_BLOCK_ADDRESSABLE     = 0,
@@ -557,8 +557,8 @@ typedef struct LnvmeIdCtrl {
     uint16_t           ver_id;
     uint8_t            nvm_type;
     uint16_t           nchannels;
-    uint8_t            unused[11];
-} LnvmeIdCtrl;
+    uint8_t            unused[4091];
+} QEMU_PACKED LnvmeIdCtrl;
 
 enum LnvmeResponsibility {
     LNVME_R_L2P         = 0,
