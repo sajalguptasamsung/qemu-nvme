@@ -121,6 +121,20 @@ static uint8_t lnvme_dev(NvmeCtrl *n)
     return (n->lnvme_ctrl.id_ctrl.ver_id != 0);
 }
 
+static void lnvme_feature_set(LnvmeCtrl *ln, uint32_t ndx, uint8_t val)
+{
+    uint64_t *v;
+    uint8_t i = (ndx >> 6);
+    if (i > 7)
+        return;
+
+    v = &ln->features[i];
+    if (val)
+        *v |= 1U << (ndx & 63U);
+    else
+        *v &= ~(1U << (ndx & 63U));
+}
+
 static int nvme_check_sqid(NvmeCtrl *n, uint16_t sqid)
 {
     return sqid < n->num_queues && n->sq[sqid] != NULL ? 0 : -1;
@@ -1859,8 +1873,7 @@ static uint16_t lnvme_get_features(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
 static uint16_t lnvme_set_responsibility(NvmeCtrl *n, NvmeCmd *cmd)
 {
     uint32_t rcode = le32_to_cpu(cmd->cdw10);
-    uint32_t bitval = le32_to_cpu(cmd->cdw11) & 0x1;
-    uint64_t rd, rm;
+    uint8_t bitval = le32_to_cpu(cmd->cdw11) & 0x1;
 
     LnvmeCtrl *ln = &n->lnvme_ctrl;
 
@@ -1874,16 +1887,7 @@ static uint16_t lnvme_set_responsibility(NvmeCtrl *n, NvmeCmd *cmd)
         return NVME_INVALID_FIELD | NVME_DNR;
     }
     */
-
-    rd = rcode ? (rcode / sizeof(uint64_t) * 8) : 0;
-    rm = rcode ? (rcode % sizeof(uint64_t) * 8) : 0;
-
-    if (bitval) {
-        ln->features[rd] |= (1<<rm);
-    } else {
-        ln->features[rd] &= ~(1<<rm);
-    }
-
+    lnvme_feature_set(ln, rcode, bitval);
     return NVME_SUCCESS;
 }
 
@@ -2592,7 +2596,15 @@ static int lnvme_init(NvmeCtrl *n)
     unsigned int i;
     uint64_t chnl_size = n->ns_size;
     ln = &n->lnvme_ctrl.id_ctrl;
-    
+
+    lnvme_feature_set(&n->lnvme_ctrl, R_L2P_MAPPING, 0);
+    lnvme_feature_set(&n->lnvme_ctrl, R_P2L_MAPPING, 0);
+    lnvme_feature_set(&n->lnvme_ctrl, R_GC, 1);
+    lnvme_feature_set(&n->lnvme_ctrl, R_ECC, 1);
+    lnvme_feature_set(&n->lnvme_ctrl, E_BLK_MOVE, 0);
+    lnvme_feature_set(&n->lnvme_ctrl, E_NVM_COPY_BACK, 0);
+    lnvme_feature_set(&n->lnvme_ctrl, E_SAFE_SHUTDOWN, 0);
+
     n->lnvme_ctrl.channels = g_malloc0(sizeof(LnvmeIdChannel) * ln->nchannels);
     for (i = 0; i < ln->nchannels; i++) {
         c = &n->lnvme_ctrl.channels[i];
