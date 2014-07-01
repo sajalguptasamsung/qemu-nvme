@@ -784,10 +784,19 @@ typedef struct NvmeNamespace {
 
 typedef struct LnvmeCtrl {
     LnvmeIdCtrl     id_ctrl;
-    uint64_t        features[4];
-    uint64_t        extensions[4];
+    uint64_t        features[8];
     LnvmeIdChannel  *channels;
 } LnvmeCtrl;
+
+enum LnvmeFeatures {
+    R_L2P_MAPPING	= 0U,
+    R_P2L_MAPPING	= 1U,
+    R_GC		= 2U,
+    R_ECC		= 3U,
+    E_BLK_MOVE		= 256U,
+    E_NVM_COPY_BACK	= 257U,
+    E_SAFE_SHUTDOWN	= 258U,
+};
 
 typedef struct NvmeCtrl {
     PCIDevice    parent_obj;

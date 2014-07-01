@@ -1853,7 +1853,7 @@ static uint16_t lnvme_get_features(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
     uint64_t prp2 = le64_to_cpu(cmd->prp2);
 
     return nvme_dma_read_prp(n, (uint8_t *)&n->lnvme_ctrl.features, 
-        sizeof(n->lnvme_ctrl.features) + sizeof(n->lnvme_ctrl.extensions), prp1, prp2);
+        sizeof(n->lnvme_ctrl.features), prp1, prp2);
 }
 
 static uint16_t lnvme_set_responsibility(NvmeCtrl *n, NvmeCmd *cmd)
