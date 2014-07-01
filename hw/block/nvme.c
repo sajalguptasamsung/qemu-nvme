@@ -2595,16 +2595,16 @@ static int lnvme_init(NvmeCtrl *n)
     
     n->lnvme_ctrl.channels = g_malloc0(sizeof(LnvmeIdChannel) * ln->nchannels);
     for (i = 0; i < ln->nchannels; i++) {
-	    c = &n->lnvme_ctrl.channels[i];
-	    c->queue_size = cpu_to_le64(64);
-	    c->gran_read = c->gran_write = c->gran_erase = cpu_to_le64(4096);
-	    c->oob_size = cpu_to_le64(0);
-	    c->t_r = c->t_sqr = cpu_to_le32(10000);
-	    c->t_w = c->t_sqw = cpu_to_le32(10000);
-	    c->t_e = cpu_to_le32(100000);
-	    c->io_sched = cpu_to_le32(LNVME_IOSCHED_CHANNEL);
-	    c->laddr_begin = cpu_to_le64(chnl_size * i);
-	    c->laddr_end = cpu_to_le64(c->laddr_begin + chnl_size);
+        c = &n->lnvme_ctrl.channels[i];
+        c->queue_size = cpu_to_le64(64);
+        c->gran_read = c->gran_write = c->gran_erase = cpu_to_le64(4096);
+        c->oob_size = cpu_to_le64(0);
+        c->t_r = c->t_sqr = cpu_to_le32(10000);
+        c->t_w = c->t_sqw = cpu_to_le32(10000);
+        c->t_e = cpu_to_le32(100000);
+        c->io_sched = cpu_to_le32(LNVME_IOSCHED_CHANNEL);
+        c->laddr_begin = cpu_to_le64(chnl_size * i);
+        c->laddr_end = cpu_to_le64(c->laddr_begin + chnl_size);
     }
     return 0;
 }
