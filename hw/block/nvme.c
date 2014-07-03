@@ -1842,8 +1842,8 @@ static uint16_t lnvme_identify(NvmeCtrl *n, NvmeCmd *cmd)
     uint64_t prp1 = le64_to_cpu(cmd->prp1);
     uint64_t prp2 = le64_to_cpu(cmd->prp2);
 
-    return nvme_dma_read_prp(n, (uint8_t *)&n->lnvme_ctrl, sizeof(n->lnvme_ctrl),
-        prp1, prp2);
+    return nvme_dma_read_prp(n, (uint8_t *)&n->lnvme_ctrl.id_ctrl,
+                       sizeof(n->lnvme_ctrl.id_ctrl), prp1, prp2);
 }
 
 static uint16_t lnvme_identify_channel(NvmeCtrl *n, NvmeCmd *cmd)
@@ -2710,7 +2710,7 @@ static Property nvme_props[] = {
     DEFINE_PROP_UINT8("meta", NvmeCtrl, meta, 0),
     DEFINE_PROP_UINT16("oacs", NvmeCtrl, oacs, NVME_OACS_FORMAT),
     DEFINE_PROP_UINT16("oncs", NvmeCtrl, oncs, NVME_ONCS_DSM),
-    DEFINE_PROP_UINT16("lver", NvmeCtrl, lnvme_ctrl.id_ctrl.ver_id, 0),
+    DEFINE_PROP_UINT16("lver", NvmeCtrl, lnvme_ctrl.id_ctrl.ver_id, 1),
     DEFINE_PROP_UINT8("ltype", NvmeCtrl, lnvme_ctrl.id_ctrl.nvm_type, NVM_BLOCK_ADDRESSABLE),
     DEFINE_PROP_UINT16("lchannels", NvmeCtrl, lnvme_ctrl.id_ctrl.nchannels, 16),
     DEFINE_PROP_END_OF_LIST(),
