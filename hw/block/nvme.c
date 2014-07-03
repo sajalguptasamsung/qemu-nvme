@@ -2136,12 +2136,12 @@ static uint16_t nvme_admin_cmd(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
         return NVME_INVALID_OPCODE | NVME_DNR;
     case LNVME_ADM_CMD_GET_L2P_TBL:
         if (lnvme_dev(n)) {
-		return lnvme_get_l2p_tbl(n, cmd, req);
+            return lnvme_get_l2p_tbl(n, cmd, req);
         }
         return NVME_INVALID_OPCODE | NVME_DNR;
     case LNVME_ADM_CMD_GET_P2L_TBL:
         if (lnvme_dev(n)) {
-		return lnvme_get_p2l_tbl(n, cmd, req);
+            return lnvme_get_p2l_tbl(n, cmd, req);
         }
         return NVME_INVALID_OPCODE | NVME_DNR;
     case NVME_ADM_CMD_ACTIVATE_FW:
