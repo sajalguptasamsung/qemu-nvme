@@ -1750,6 +1750,7 @@ static uint16_t nvme_format_namespace(NvmeNamespace *ns, uint8_t lba_idx,
 {
     uint64_t blks;
     uint16_t ms = le16_to_cpu(ns->id_ns.lbaf[lba_idx].ms);
+    LnvmeIdChannel *c;
 
     if (lba_idx > ns->id_ns.nlbaf) {
         return NVME_INVALID_FORMAT | NVME_DNR;
@@ -1790,6 +1791,9 @@ static uint16_t nvme_format_namespace(NvmeNamespace *ns, uint8_t lba_idx,
         ns->tbl_dsk_start_offset = ns->meta_start_offset + (blks * ns->ctrl->meta);
         ns->tbl_entries = blks;
         ns->tbl = g_malloc0(sizeof(uint32)*blks);
+        c = &ns->ctrl->lnvme_ctrl.channels[ns->id];
+        c->gran_read = cpu_to_le64(1 << ns->id_ns.lbaf[lba_idx].ds);
+        c->gran_write = c->gran_erase = c->gran_read;
     }
     ns->util = bitmap_new(blks);
     ns->uncorrectable = bitmap_new(blks);
@@ -2593,8 +2597,12 @@ static int lnvme_init(NvmeCtrl *n)
 {
     LnvmeIdCtrl *ln;
     LnvmeIdChannel *c;
+    NvmeNamespace *ns;
+    NvmeIdNs *ns_id;
     unsigned int i;
     uint64_t chnl_size = n->ns_size;
+    uint8_t lba_index;
+    uint8_t lba_ds;
     ln = &n->lnvme_ctrl.id_ctrl;
 
     lnvme_feature_set(&n->lnvme_ctrl, R_L2P_MAPPING, 0);
@@ -2607,9 +2615,13 @@ static int lnvme_init(NvmeCtrl *n)
 
     n->lnvme_ctrl.channels = g_malloc0(sizeof(LnvmeIdChannel) * ln->nchannels);
     for (i = 0; i < ln->nchannels; i++) {
+        ns = &n->namespaces[i];
+        ns_id = & ns->id_ns;
+        lba_index = NVME_ID_NS_FLBAS_INDEX(ns_id->flbas);
+        lba_ds = ns_id->lbaf[lba_index].ds;
         c = &n->lnvme_ctrl.channels[i];
         c->queue_size = cpu_to_le64(64);
-        c->gran_read = c->gran_write = c->gran_erase = cpu_to_le64(4096);
+        c->gran_read = c->gran_write = c->gran_erase = cpu_to_le64( 1 << lba_ds );
         c->oob_size = cpu_to_le64(0);
         c->t_r = c->t_sqr = cpu_to_le32(10000);
         c->t_w = c->t_sqw = cpu_to_le32(10000);
