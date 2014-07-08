@@ -200,7 +200,7 @@ typedef struct LnvmeGetTbl {
     uint8_t flags;
     uint16_t cid;
     uint32_t nsid;
-    uint32_t rsvd1[3];
+    uint32_t rsvd1[4];
     uint64_t prp1;
     uint64_t prp2;
     uint64_t slba;
