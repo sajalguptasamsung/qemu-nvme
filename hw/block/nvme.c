@@ -2639,6 +2639,11 @@ static int nvme_init(PCIDevice *pci_dev)
     int64_t bs_size;
 
     blkconf_serial(&n->conf, &n->serial);
+
+    if (lnvme_dev(n)) {
+        n->num_namespaces = n->lnvme_ctrl.id_ctrl.nchannels;
+    }
+
     if (nvme_check_constraints(n)) {
         return -1;
     }
