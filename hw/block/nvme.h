@@ -577,6 +577,7 @@ enum NvmeIdCtrlOacs {
     NVME_OACS_SECURITY  = 1 << 0,
     NVME_OACS_FORMAT    = 1 << 1,
     NVME_OACS_FW        = 1 << 2,
+    NVME_OACS_LNVME_DEV = 1 << 3,
 };
 
 enum NvmeIdCtrlOncs {

@@ -2522,7 +2522,10 @@ static void nvme_init_ctrl(NvmeCtrl *n)
     id->ieee[2] = 0xb3;
     id->cmic = 0;
     id->mdts = n->mdts;
-    id->oacs = cpu_to_le16(n->oacs);
+    if (lnvme_dev(n))
+        id->oacs = cpu_to_le16(n->oacs | NVME_OACS_LNVME_DEV );
+    else
+        id->oacs = cpu_to_le16(n->oacs);
     id->acl = n->acl;
     id->aerl = n->aerl;
     id->frmw = 7 << 1 | 1;
