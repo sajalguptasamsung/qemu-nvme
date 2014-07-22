@@ -2056,8 +2056,8 @@ static uint16_t lnvme_get_p2l_tbl(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
 {
     NvmeNamespace *ns;
     LnvmeGetTbl *gtbl = (LnvmeGetTbl*)cmd;
-    uint64_t slba = le16_to_cpu(gtbl->slba);
     uint16_t nlb = le16_to_cpu(gtbl->nlb+1);
+    uint64_t slba = le64_to_cpu(gtbl->slba);
     uint64_t prp1 = le64_to_cpu(gtbl->prp1);
     uint64_t prp2 = le64_to_cpu(gtbl->prp2);
     uint32_t nsid = le32_to_cpu(gtbl->nsid);
