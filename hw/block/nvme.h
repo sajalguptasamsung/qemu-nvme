@@ -179,6 +179,7 @@ enum LnvmeAdminCommands {
     LNVME_ADM_CMD_SET_FEATURES      = 0xc3,
     LNVME_ADM_CMD_GET_L2P_TBL       = 0xc4,
     LNVME_ADM_CMD_GET_P2L_TBL       = 0xc5,
+    LNVME_ADM_CMD_FLUSH_TBLS        = 0xc6,
 };
 
 enum NvmeIoCommands {

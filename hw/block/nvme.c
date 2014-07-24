@@ -2130,6 +2130,53 @@ static uint16_t lnvme_get_p2l_tbl(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
     return NVME_NO_COMPLETE;
 }
 
+typedef struct AIOTblFlushRequest {
+    NvmeRequest *req;
+    struct iovec iov;
+    struct QEMUIOVector qiov;
+} AIOTblFlushRequest;
+
+static void flush_tbls_io_complete(void *opaque, int ret)
+{
+    AIOTblFlushRequest *tfreq = opaque;
+    NvmeRequest *req = tfreq->req;
+    NvmeSQueue *sq = req->sq;
+    NvmeCtrl *n = sq->ctrl;
+    NvmeCQueue *cq = n->cq[sq->cqid];
+
+    bdrv_acct_done(n->conf.bs, &req->acct);
+    req->status = !ret ? NVME_SUCCESS : NVME_INTERNAL_DEV_ERROR;
+    nvme_enqueue_req_completion(cq, req);
+    g_free(tfreq);
+}
+
+static uint16_t lnvme_flush_tbls(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
+{
+    /*
+     * [FIXME] lock tbl & disk for I/O while processing request
+     */
+    NvmeNamespace *ns;
+    uint32_t nsid = le32_to_cpu(cmd->nsid);
+    uint64_t slba;
+    AIOTblFlushRequest *tfreq;
+
+    ns = &n->namespaces[nsid-1];
+    tfreq = g_malloc0(sizeof(AIOTblFlushRequest));
+    tfreq->req = req;
+    tfreq->iov.iov_base = (void *)ns->tbl;
+    tfreq->iov.iov_len = ns->tbl_entries * sizeof(uint32_t);
+    qemu_iovec_init_external(&tfreq->qiov, &tfreq->iov, 1);
+
+    req->ns = ns;
+    req->nlb = tfreq->iov.iov_len >> BDRV_SECTOR_BITS;
+    slba = ns->tbl_dsk_start_offset >> BDRV_SECTOR_BITS;
+
+    bdrv_acct_start(n->conf.bs, &req->acct, tfreq->iov.iov_len, BDRV_ACCT_WRITE);
+    req->aiocb = bdrv_aio_writev(n->conf.bs, slba, &tfreq->qiov,
+        req->nlb, flush_tbls_io_complete, tfreq);
+    return NVME_NO_COMPLETE;
+}
+
 static uint16_t nvme_admin_cmd(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
 {
     switch (cmd->opcode) {
@@ -2186,6 +2233,11 @@ static uint16_t nvme_admin_cmd(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
     case LNVME_ADM_CMD_GET_P2L_TBL:
         if (lnvme_dev(n)) {
             return lnvme_get_p2l_tbl(n, cmd, req);
+        }
+        return NVME_INVALID_OPCODE | NVME_DNR;
+    case LNVME_ADM_CMD_FLUSH_TBLS:
+        if (lnvme_dev(n)) {
+            return lnvme_flush_tbls(n, cmd, req);
         }
         return NVME_INVALID_OPCODE | NVME_DNR;
     case NVME_ADM_CMD_ACTIVATE_FW:
