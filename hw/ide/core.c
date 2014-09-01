@@ -180,6 +180,9 @@ static void ide_identify(IDEState *s)
         put_le16(p + 169, 1); /* TRIM support */
     }
 
+    if (dev && dev->conf.is_lightnvm)
+        put_le16(p + 169, 2); /* enable lightnvm. Overwrites trim support */
+
     memcpy(s->identify_data, p, sizeof(s->identify_data));
     s->identify_set = 1;
 }
