@@ -1790,7 +1790,8 @@ static void nvme_partition_ns(NvmeNamespace *ns, uint64_t blks, uint8_t lba_idx)
         if (n->lnvme_ctrl.channels) {
             c = &n->lnvme_ctrl.channels[ns->id];
             c->gran_read = cpu_to_le64(1 << ns->id_ns.lbaf[lba_idx].ds);
-            c->gran_write = c->gran_erase = c->gran_read;
+            c->gran_write = c->gran_read;
+            c->gran_erase = c->gran_read * 128; /* 128 pages in a block */
         }
     } else {
         ns->tbl_entries = 0;
