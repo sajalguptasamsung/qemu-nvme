@@ -2705,7 +2705,8 @@ static int lnvme_init(NvmeCtrl *n)
         lba_ds = ns_id->lbaf[lba_index].ds;
         c = &n->lnvme_ctrl.channels[i];
         c->queue_size = cpu_to_le64(64);
-        c->gran_read = c->gran_write = c->gran_erase = cpu_to_le64( 1 << lba_ds );
+        c->gran_read = c->gran_write = cpu_to_le64( 1 << lba_ds );
+        c->gran_erase = c->gran_read * 128;
         c->oob_size = cpu_to_le64(0);
         c->t_r = c->t_sqr = cpu_to_le32(10000);
         c->t_w = c->t_sqw = cpu_to_le32(10000);
