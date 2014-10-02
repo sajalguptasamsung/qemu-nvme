@@ -703,6 +703,8 @@ static inline void _nvme_check_size(void)
     QEMU_BUILD_BUG_ON(sizeof(NvmeSmartLog) != 512);
     QEMU_BUILD_BUG_ON(sizeof(NvmeIdCtrl) != 4096);
     QEMU_BUILD_BUG_ON(sizeof(NvmeIdNs) != 4096);
+    QEMU_BUILD_BUG_ON(sizeof(LnvmIdCtrl) != 4096);
+    QEMU_BUILD_BUG_ON(sizeof(LnvmIdChannel) != 4096);
 }
 
 typedef struct NvmeAsyncEvent {
