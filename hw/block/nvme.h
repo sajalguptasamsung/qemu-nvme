@@ -729,6 +729,26 @@ typedef struct NvmeRequest {
     QTAILQ_ENTRY(NvmeRequest)entry;
 } NvmeRequest;
 
+typedef struct AIOTblRequest AIOTblRequest;
+typedef int LNVMETblIOFunc(AIOTblRequest *treq);
+
+struct AIOTblRequest {
+    int sg_cur_ndx;
+    dma_addr_t sg_cur_byte;
+    QEMUIOVector iov;
+    QEMUSGList *sg;
+    QEMUBH *bh;
+    size_t b_copied;
+    LNVMETblIOFunc *io_func;
+    NvmeRequest *req;
+};
+
+typedef struct AIOTblFlushRequest {
+    NvmeRequest *req;
+    struct iovec iov;
+    struct QEMUIOVector qiov;
+} AIOTblFlushRequest;
+
 typedef struct NvmeSQueue {
     struct NvmeCtrl *ctrl;
     uint8_t     phys_contig;
