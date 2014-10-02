@@ -172,14 +172,14 @@ enum NvmeAdminCommands {
     NVME_ADM_CMD_SECURITY_RECV  = 0x82,
 };
 
-enum LnvmeAdminCommands {
-    LNVME_ADM_CMD_IDENTIFY          = 0xc0,
-    LNVME_ADM_CMD_IDENTIFY_CHANNEL  = 0xc1,
-    LNVME_ADM_CMD_GET_FEATURES      = 0xc2,
-    LNVME_ADM_CMD_SET_FEATURES      = 0xc3,
-    LNVME_ADM_CMD_GET_L2P_TBL       = 0xc4,
-    LNVME_ADM_CMD_GET_P2L_TBL       = 0xc5,
-    LNVME_ADM_CMD_FLUSH_TBLS        = 0xc6,
+enum LnvmAdminCommands {
+    LNVM_ADM_CMD_IDENTIFY          = 0xc0,
+    LNVM_ADM_CMD_IDENTIFY_CHANNEL  = 0xc1,
+    LNVM_ADM_CMD_GET_FEATURES      = 0xc2,
+    LNVM_ADM_CMD_SET_FEATURES      = 0xc3,
+    LNVM_ADM_CMD_GET_L2P_TBL       = 0xc4,
+    LNVM_ADM_CMD_GET_P2L_TBL       = 0xc5,
+    LNVM_ADM_CMD_FLUSH_TBLS        = 0xc6,
 };
 
 enum NvmeIoCommands {
@@ -191,12 +191,12 @@ enum NvmeIoCommands {
     NVME_CMD_DSM                = 0x09,
 };
 
-enum LnvmeDmCommands {
-    LNVME_CMD_ERASE_SYNC        = 0x80,
-    LNVME_CMD_ERASE_ASYNC       = 0x81,
+enum LnvmDmCommands {
+    LNVM_CMD_ERASE_SYNC        = 0x80,
+    LNVM_CMD_ERASE_ASYNC       = 0x81,
 };
 
-typedef struct LnvmeGetTbl {
+typedef struct LnvmGetTbl {
     uint8_t opcode;
     uint8_t flags;
     uint16_t cid;
@@ -207,7 +207,7 @@ typedef struct LnvmeGetTbl {
     uint64_t slba;
     uint16_t nlb;
     uint16_t rsvd2[7];
-} LnvmeGetTbl;
+} LnvmGetTbl;
 
 typedef struct NvmeDeleteQ {
     uint8_t     opcode;
@@ -527,12 +527,12 @@ typedef struct NvmeIdCtrl {
     uint8_t     vs[1024];
 } NvmeIdCtrl;
 
-enum LnvmeIoSched {
-    LNVME_IOSCHED_CHANNEL	= 0,
-    LNVME_IOSCHED_CHIP		= 1,
+enum LnvmIoSched {
+    LNVM_IOSCHED_CHANNEL	= 0,
+    LNVM_IOSCHED_CHIP		= 1,
 };
 
-typedef struct LnvmeIdChannel {
+typedef struct LnvmIdChannel {
     uint64_t    queue_size;
     uint64_t	gran_read;
     uint64_t	gran_write;
@@ -547,38 +547,38 @@ typedef struct LnvmeIdChannel {
     uint64_t    laddr_begin;
     uint64_t    laddr_end;
     uint8_t     unused[4019];
-} QEMU_PACKED LnvmeIdChannel;
+} QEMU_PACKED LnvmIdChannel;
 
-enum LnvmeNvmType {
+enum LnvmNvmType {
     NVM_BLOCK_ADDRESSABLE     = 0,
     NVM_BYTE_ADDRESSABLE      = 1,
 };
 
-typedef struct LnvmeIdCtrl {
+typedef struct LnvmIdCtrl {
     uint16_t           ver_id;
     uint8_t            nvm_type;
     uint16_t           nchannels;
     uint8_t            unused[4091];
-} QEMU_PACKED LnvmeIdCtrl;
+} QEMU_PACKED LnvmIdCtrl;
 
-enum LnvmeResponsibility {
-    LNVME_R_L2P         = 0,
-    LNVME_R_P2L         = 1,
-    LNVME_R_GC          = 2,
-    LNVME_R_ECC         = 3,
+enum LnvmResponsibility {
+    LNVM_R_L2P         = 0,
+    LNVM_R_P2L         = 1,
+    LNVM_R_GC          = 2,
+    LNVM_R_ECC         = 3,
 };
 
-enum LnvmeExtension {
-    LNVME_EXT_BLK_MV    = 1 << 0,
-    LNVME_EXT_CPB       = 1 << 1,
-    LNVME_EXT_PS        = 2 << 2,
+enum LnvmExtension {
+    LNVM_EXT_BLK_MV    = 1 << 0,
+    LNVM_EXT_CPB       = 1 << 1,
+    LNVM_EXT_PS        = 2 << 2,
 };
 
 enum NvmeIdCtrlOacs {
     NVME_OACS_SECURITY  = 1 << 0,
     NVME_OACS_FORMAT    = 1 << 1,
     NVME_OACS_FW        = 1 << 2,
-    NVME_OACS_LNVME_DEV = 1 << 3,
+    NVME_OACS_LNVM_DEV = 1 << 3,
 };
 
 enum NvmeIdCtrlOncs {
@@ -804,13 +804,13 @@ typedef struct NvmeNamespace {
 #define NVME(obj) \
         OBJECT_CHECK(NvmeCtrl, (obj), TYPE_NVME)
 
-typedef struct LnvmeCtrl {
-    LnvmeIdCtrl     id_ctrl;
+typedef struct LnvmCtrl {
+    LnvmIdCtrl     id_ctrl;
     uint64_t        features[8];
-    LnvmeIdChannel  *channels;
-} LnvmeCtrl;
+    LnvmIdChannel  *channels;
+} LnvmCtrl;
 
-enum LnvmeFeatures {
+enum LnvmFeatures {
     R_L2P_MAPPING	= 0U,
     R_P2L_MAPPING	= 1U,
     R_GC		= 2U,
@@ -883,7 +883,7 @@ typedef struct NvmeCtrl {
     QEMUTimer   *aer_timer;
     uint8_t     aer_mask;
 
-    LnvmeCtrl     lnvme_ctrl;
+    LnvmCtrl     lnvm_ctrl;
 } NvmeCtrl;
 
 typedef struct NvmeDifTuple {
