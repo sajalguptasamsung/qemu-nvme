@@ -563,7 +563,7 @@ enum LnvmNvmType {
 typedef struct LnvmIdCtrl {
     uint16_t           ver_id;
     uint8_t            nvm_type;
-    uint16_t           nchannels;
+    uint16_t           nschannels;
     uint8_t            unused[4091];
 } QEMU_PACKED LnvmIdCtrl;
 
@@ -802,6 +802,7 @@ typedef struct NvmeNamespace {
     unsigned long   *util;
     unsigned long   *uncorrectable;
     uint32_t        id;
+    uint64_t        ns_blks;
     uint64_t        start_block;
     uint64_t        meta_start_offset;
     uint64_t        tbl_dsk_start_offset;
