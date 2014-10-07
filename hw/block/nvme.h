@@ -1,5 +1,6 @@
 #ifndef HW_NVME_H
 #define HW_NVME_H
+#include <qemu/bitops.h>
 
 typedef struct NvmeBar {
     uint64_t    cap;
@@ -549,6 +550,11 @@ typedef struct LnvmIdChannel {
     uint8_t     unused[4019];
 } QEMU_PACKED LnvmIdChannel;
 
+#define LNVM_NUM_FEATURES 512
+typedef struct LnvmIdFeatures {
+    unsigned long map[BITS_TO_LONGS(LNVM_NUM_FEATURES)];
+} QEMU_PACKED LnvmIdFeatures;
+
 enum LnvmNvmType {
     NVM_BLOCK_ADDRESSABLE     = 0,
     NVM_BYTE_ADDRESSABLE      = 1,
@@ -705,6 +711,7 @@ static inline void _nvme_check_size(void)
     QEMU_BUILD_BUG_ON(sizeof(NvmeIdNs) != 4096);
     QEMU_BUILD_BUG_ON(sizeof(LnvmIdCtrl) != 4096);
     QEMU_BUILD_BUG_ON(sizeof(LnvmIdChannel) != 4096);
+    QEMU_BUILD_BUG_ON(sizeof(LnvmIdFeatures) != LNVM_NUM_FEATURES >> 3);
 }
 
 typedef struct NvmeAsyncEvent {
@@ -808,7 +815,7 @@ typedef struct NvmeNamespace {
 
 typedef struct LnvmCtrl {
     LnvmIdCtrl     id_ctrl;
-    uint64_t        features[8];
+    LnvmIdFeatures id_features;
     LnvmIdChannel  *channels;
 } LnvmCtrl;
 

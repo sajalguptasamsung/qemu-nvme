@@ -122,23 +122,19 @@ static uint8_t lnvm_dev(NvmeCtrl *n)
     return (n->lnvm_ctrl.id_ctrl.ver_id != 0);
 }
 
-static void lnvm_feature_set(LnvmCtrl *ln, uint32_t ndx, uint8_t val)
 {
-    uint64_t *v;
-    uint8_t i = (ndx >> 6);
 
-    if (i > 7) /*There's 512 options of 1b each, ergo 8 64b values*/
-        return;
-
-    /*
-     *'features[(ndx >> 6)] & (ndx & 63U)' yields the single bit
-     * governing the requested feature.
-     */
-    v = &ln->features[i];
-    if (val)
-        *v |= 1U << (ndx & 63U);
-    else
-        *v &= ~(1U << (ndx & 63U));
+static int lnvm_feature_set(LnvmCtrl *ln, uint32_t ndx, uint8_t val)
+{
+    if (ndx > LNVM_NUM_FEATURES) {
+        return -1;
+    }
+    if (val) {
+        bitmap_set((unsigned long*)&ln->id_features.map, ndx, 1);
+    } else {
+        bitmap_clear((unsigned long*)&ln->id_features.map, ndx, 1);
+    }
+    return 0;
 }
 
 static int nvme_check_sqid(NvmeCtrl *n, uint16_t sqid)
