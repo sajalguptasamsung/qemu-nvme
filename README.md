@@ -1,3 +1,9 @@
+
+Placeholder
+
+
+--
+
 Read the documentation in qemu-doc.html or on http://wiki.qemu-project.org
 
 - QEMU team
