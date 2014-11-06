@@ -209,6 +209,20 @@ typedef struct LnvmGetTbl {
     uint16_t rsvd2[7];
 } LnvmGetTbl;
 
+typedef struct LnvmGetBBTbl {
+  uint8_t opcode;
+  uint8_t fuse;
+  uint16_t cid;
+  uint32_t nsid;
+  uint32_t rsvd1[4];
+  uint64_t prp1;
+  uint64_t prp2;
+  uint32_t tbl_off;
+  uint8_t prp1_len;
+  uint8_t rsvd2[3];
+  uint32_t rsvd3[4];
+} LnvmGetBBTbl;
+
 typedef struct NvmeDeleteQ {
     uint8_t     opcode;
     uint8_t     flags;

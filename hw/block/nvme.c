@@ -2231,7 +2231,17 @@ static uint16_t lnvm_get_p2l_tbl(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
 
 static uint16_t lnvm_get_bb_tbl(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
 {
-    return NVME_SUCCESS;
+    LnvmGetBBTbl *bbcmd = (LnvmGetBBTbl *)cmd;
+    uint32_t off = le32_to_cpu(bbcmd->tbl_off);
+    uint64_t prp1 = le64_to_cpu(bbcmd->prp1);
+    uint64_t prp2 = le64_to_cpu(bbcmd->prp2);
+    uint8_t prp1_len = bbcmd->prp1_len;
+
+    fprintf(stderr, "NVME: lnvm_get_bb_tbl - STUB! (tbl_off:%"SCNu32", "
+            "prp1:%"SCNu64", prp2:%"SCNu64", prp1_len%"SCNu8")\n",
+            off, prp1, prp2, prp1_len);
+
+    return NVME_SUCCESS; /*TODO: STUB*/
 }
 
 static void flush_tbls_io_complete(void *opaque, int ret)
