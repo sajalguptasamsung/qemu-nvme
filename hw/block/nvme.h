@@ -539,14 +539,14 @@ typedef struct LnvmIdChannel {
     uint64_t	gran_write;
     uint64_t	gran_erase;
     uint64_t    oob_size;
+    uint64_t    laddr_begin;
+    uint64_t    laddr_end;
     uint32_t    t_r;
     uint32_t    t_sqr;
     uint32_t    t_w;
     uint32_t    t_sqw;
     uint32_t    t_e;
     uint8_t     io_sched;
-    uint64_t    laddr_begin;
-    uint64_t    laddr_end;
     uint8_t     unused[4019];
 } QEMU_PACKED LnvmIdChannel;
 
@@ -562,8 +562,8 @@ enum LnvmNvmType {
 
 typedef struct LnvmIdCtrl {
     uint16_t           ver_id;
-    uint8_t            nvm_type;
     uint16_t           nschannels;
+    uint8_t            nvm_type;
     uint8_t            unused[4091];
 } QEMU_PACKED LnvmIdCtrl;
 
