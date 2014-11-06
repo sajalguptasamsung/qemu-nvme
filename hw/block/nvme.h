@@ -175,11 +175,10 @@ enum NvmeAdminCommands {
 
 enum LnvmAdminCommands {
     LNVM_ADM_CMD_IDENTIFY          = 0xc0,
-    LNVM_ADM_CMD_IDENTIFY_CHANNEL  = 0xc1,
     LNVM_ADM_CMD_GET_FEATURES      = 0xc2,
     LNVM_ADM_CMD_SET_FEATURES      = 0xc3,
-    LNVM_ADM_CMD_GET_L2P_TBL       = 0xc4,
-    LNVM_ADM_CMD_GET_P2L_TBL       = 0xc5,
+    LNVM_ADM_CMD_GET_P2L_TBL       = 0xc4,
+    LNVM_ADM_CMD_GET_BB_TBL        = 0xc5,
     LNVM_ADM_CMD_FLUSH_TBLS        = 0xc6,
 };
 
@@ -536,23 +535,24 @@ enum LnvmIoSched {
 };
 
 typedef struct LnvmIdChannel {
-    uint64_t    queue_size;
-    uint64_t	gran_read;
-    uint64_t	gran_write;
-    uint64_t	gran_erase;
-    uint64_t    oob_size;
     uint64_t    laddr_begin;
     uint64_t    laddr_end;
+    uint32_t    oob_size;
+    uint32_t    queue_size;
+    uint32_t    gran_read;
+    uint32_t    gran_write;
+    uint32_t    gran_erase;
     uint32_t    t_r;
     uint32_t    t_sqr;
     uint32_t    t_w;
     uint32_t    t_sqw;
     uint32_t    t_e;
+    uint16_t    chnl_parallelism;
     uint8_t     io_sched;
-    uint8_t     unused[4019];
+    uint8_t     res[133];
 } QEMU_PACKED LnvmIdChannel;
 
-#define LNVM_NUM_FEATURES 512
+#define LNVM_NUM_FEATURES 128
 typedef struct LnvmIdFeatures {
     unsigned long map[BITS_TO_LONGS(LNVM_NUM_FEATURES)];
 } QEMU_PACKED LnvmIdFeatures;
@@ -563,10 +563,10 @@ enum LnvmNvmType {
 };
 
 typedef struct LnvmIdCtrl {
-    uint16_t           ver_id;
-    uint16_t           nschannels;
+    uint8_t            ver_id;
     uint8_t            nvm_type;
-    uint8_t            unused[4091];
+    uint16_t           nschannels;
+    uint8_t            unused[252];
 } QEMU_PACKED LnvmIdCtrl;
 
 enum LnvmResponsibility {
@@ -711,8 +711,8 @@ static inline void _nvme_check_size(void)
     QEMU_BUILD_BUG_ON(sizeof(NvmeSmartLog) != 512);
     QEMU_BUILD_BUG_ON(sizeof(NvmeIdCtrl) != 4096);
     QEMU_BUILD_BUG_ON(sizeof(NvmeIdNs) != 4096);
-    QEMU_BUILD_BUG_ON(sizeof(LnvmIdCtrl) != 4096);
-    QEMU_BUILD_BUG_ON(sizeof(LnvmIdChannel) != 4096);
+    QEMU_BUILD_BUG_ON(sizeof(LnvmIdCtrl) != 256);
+    QEMU_BUILD_BUG_ON(sizeof(LnvmIdChannel) != 192);
     QEMU_BUILD_BUG_ON(sizeof(LnvmIdFeatures) != LNVM_NUM_FEATURES >> 3);
 }
 
@@ -759,6 +759,13 @@ typedef struct AIOTblFlushRequest {
     struct iovec iov;
     struct QEMUIOVector qiov;
 } AIOTblFlushRequest;
+
+typedef struct DMAOff {
+    QEMUSGList *qsg;
+    int ndx;
+    dma_addr_t ptr;
+    dma_addr_t len;
+} DMAOff;
 
 typedef struct NvmeSQueue {
     struct NvmeCtrl *ctrl;
