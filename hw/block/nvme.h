@@ -566,7 +566,7 @@ typedef struct LnvmIdChannel {
     uint8_t     res[133];
 } QEMU_PACKED LnvmIdChannel;
 
-#define LNVM_NUM_FEATURES 128
+#define LNVM_NUM_FEATURES 192
 typedef struct LnvmIdFeatures {
     unsigned long map[BITS_TO_LONGS(LNVM_NUM_FEATURES)];
 } QEMU_PACKED LnvmIdFeatures;

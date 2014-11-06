@@ -118,6 +118,8 @@
 #define NVME_OP_ABORTED         0xff
 
 #define LNVM_MAX_CHNLS_PR_IDENT (4096 - sizeof(LnvmIdCtrl)) / sizeof(LnvmIdChannel)
+#define LNVM_FEAT_EXT_START 64
+#define LNVM_FEAT_EXT_END 127
 
 static void nvme_process_sq(void *opaque);
 static void lnvm_treq_sched_retry(void *);
@@ -131,6 +133,10 @@ static int lnvm_num_channels(NvmeCtrl *n)
 {
     LnvmIdCtrl *ln = &n->lnvm_ctrl.id_ctrl;
     return n->num_namespaces * le16_to_cpu(ln->nschannels);
+}
+
+static int lnvm_ext_rcode(uint32_t rcode) {
+    return (rcode >= LNVM_FEAT_EXT_START && rcode <= LNVM_FEAT_EXT_END );
 }
 
 static int lnvm_feature_set(LnvmCtrl *ln, uint32_t ndx, uint8_t val)
@@ -2046,8 +2052,8 @@ static uint16_t lnvm_set_responsibility(NvmeCtrl *n, NvmeCmd *cmd)
 
     LnvmCtrl *ln = &n->lnvm_ctrl;
 
-    if (rcode > 0xff || lnvm_feature_set(ln, rcode, bitval)) {
-        /*cannot set extensions(255-512), only responsibilities*/
+    if (lnvm_ext_rcode(rcode) || lnvm_feature_set(ln, rcode, bitval)) {
+        /*can't set extensions, only responsibilities/vendor-specific codes*/
         return NVME_INVALID_FIELD | NVME_DNR;
     }
     return NVME_SUCCESS;
