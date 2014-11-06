@@ -2200,7 +2200,7 @@ static void coroutine_fn lnvm_treq_copy(void *opaque)
 static uint16_t lnvm_get_p2l_tbl(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
 {
     NvmeNamespace *ns;
-    LnvmGetTbl *gtbl = (LnvmGetTbl*)cmd;
+    LnvmGetP2lTbl *gtbl = (LnvmGetP2lTbl*)cmd;
     uint64_t slba = le64_to_cpu(gtbl->slba);
     uint16_t nlb = le16_to_cpu(gtbl->nlb);
     uint64_t prp1 = le64_to_cpu(gtbl->prp1);
@@ -2215,12 +2215,12 @@ static uint16_t lnvm_get_p2l_tbl(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
 
     if ((ns->tbl + nlb) >= (ns->tbl + ns->tbl_entries)) {
         nvme_set_error_page(n, req->sq->sqid, cmd->cid, NVME_INVALID_FIELD,
-            offsetof(LnvmGetTbl, nlb), 0, ns->id);
+            offsetof(LnvmGetP2lTbl, nlb), 0, ns->id);
         return NVME_INVALID_FIELD | NVME_DNR;
     }
     if (nvme_map_prp(&req->qsg, prp1, prp2, (nlb << BDRV_SECTOR_BITS), n)) {
         nvme_set_error_page(n, req->sq->sqid, cmd->cid, NVME_INVALID_FIELD,
-            offsetof(LnvmGetTbl, prp1), 0, ns->id);
+            offsetof(LnvmGetP2lTbl, prp1), 0, ns->id);
         return NVME_INVALID_FIELD | NVME_DNR;
     }
 

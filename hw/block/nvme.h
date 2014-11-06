@@ -196,7 +196,7 @@ enum LnvmDmCommands {
     LNVM_CMD_ERASE_ASYNC       = 0x81,
 };
 
-typedef struct LnvmGetTbl {
+typedef struct LnvmGetP2lTbl {
     uint8_t opcode;
     uint8_t flags;
     uint16_t cid;
@@ -207,7 +207,7 @@ typedef struct LnvmGetTbl {
     uint64_t slba;
     uint16_t nlb;
     uint16_t rsvd2[7];
-} LnvmGetTbl;
+} LnvmGetP2lTbl;
 
 typedef struct LnvmGetBBTbl {
   uint8_t opcode;
