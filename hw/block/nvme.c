@@ -744,9 +744,10 @@ static uint16_t nvme_rw(NvmeCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd,
     uint64_t prp1 = le64_to_cpu(rw->prp1);
     uint64_t prp2 = le64_to_cpu(rw->prp2);
     uint64_t mptr = le64_to_cpu(rw->mptr);
+    uint64_t phys_slba = le64_to_cpu(rw->phys_slba);
 
     uint64_t offset;
-    const uint64_t elba = slba + nlb;
+    uint64_t elba;
     const uint8_t lba_index = NVME_ID_NS_FLBAS_INDEX(ns->id_ns.flbas);
     const uint8_t separate = !NVME_ID_NS_FLBAS_EXTENDED(ns->id_ns.flbas);
     const uint8_t data_shift = ns->id_ns.lbaf[lba_index].ds;
@@ -756,8 +757,27 @@ static uint16_t nvme_rw(NvmeCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd,
     const uint8_t first = ns->id_ns.dps & DPS_FIRST_EIGHT;
     uint64_t data_size = nlb << data_shift;
     uint64_t meta_size = nlb * ms;
-    uint64_t aio_slba =
-            ns->start_block + (slba << (data_shift - BDRV_SECTOR_BITS));
+    uint64_t aio_slba;
+
+    if (lnvm_dev(n)) {
+        /* In the case of a LightNVM device. The slba is the logical address, while the actual
+         * physical block address is stored in Command Dword 14-15. The phys_slba is a 1-based
+         * value. i.e. substract 1 to get the actual address. 0 is used as "not mapped" and
+         * is not a valid command.
+        */
+        if (!phys_slba) {
+            nvme_set_error_page(n, req->sq->sqid, cmd->cid, NVME_LBA_RANGE,
+                offsetof(NvmeRwCmd, nlb), slba + nlb, ns->id);
+            return NVME_LBA_RANGE | NVME_DNR;
+        }
+
+        elba = phys_slba + nlb - 1;
+        slba = phys_slba - 1;
+    } else {
+        elba = slba + nlb;
+    }
+
+    aio_slba = ns->start_block + (slba << (data_shift - BDRV_SECTOR_BITS));
 
     req->is_write = rw->opcode == NVME_CMD_WRITE;
     if (elba > le64_to_cpu(ns->id_ns.nsze)) {

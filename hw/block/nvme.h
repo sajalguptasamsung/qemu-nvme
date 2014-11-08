@@ -287,9 +287,11 @@ typedef struct NvmeRwCmd {
     uint16_t    nlb;
     uint16_t    control;
     uint32_t    dsmgmt;
-    uint32_t    reftag;
+/*    uint32_t    reftag;
     uint16_t    apptag;
     uint16_t    appmask;
+*/
+    uint64_t    phys_slba;
 } NvmeRwCmd;
 
 enum {
