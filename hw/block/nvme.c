@@ -124,7 +124,6 @@
 #define LNVM_LBA_UNMAPPED UINT32_MAX
 
 static void nvme_process_sq(void *opaque);
-static void lnvm_treq_sched_retry(void *);
 
 static uint8_t lnvm_dev(NvmeCtrl *n)
 {
@@ -2067,180 +2066,35 @@ static uint16_t lnvm_set_responsibility(NvmeCtrl *n, NvmeCmd *cmd)
     return NVME_SUCCESS;
 }
 
-static void lnvm_treq_map(AIOTblRequest *treq)
-{
-    dma_addr_t cur_addr, cur_len;
-    int iovs_mapped;
-    void *buf;
-    QEMUSGList *qsg = treq->sg;
-
-map_more:
-    cur_addr = cur_len = 0;
-    iovs_mapped = 0;
-    buf = NULL;
-
-    if (treq->sg_cur_ndx == qsg->nsg) {
-        if (treq->b_copied == qsg->size) {
-            return;
-        } else {
-            goto copy;
-        }
-    }
-
-    while (treq->sg_cur_ndx < treq->sg->nsg) {
-        cur_addr = qsg->sg[treq->sg_cur_ndx].base + treq->sg_cur_byte;
-        cur_len = qsg->sg[treq->sg_cur_ndx].len - treq->sg_cur_byte;
-        buf = dma_memory_map(qsg->as, cur_addr, &cur_len,
-            DMA_DIRECTION_FROM_DEVICE);
-        if (!buf)
-            break; /* mapping addressing space failed - resources exhausted */
-        qemu_iovec_add(&treq->iov, buf, cur_len);
-        iovs_mapped++;
-        treq->sg_cur_byte += cur_len;
-        if (treq->sg_cur_byte == qsg->sg[treq->sg_cur_ndx].len) {
-            treq->sg_cur_byte = 0;
-            ++treq->sg_cur_ndx;
-        }
-    }
-
-    if (!iovs_mapped) {
-        cpu_register_map_client(treq, lnvm_treq_sched_retry);
-        return;
-    }
-
-copy:
-    if (treq->io_func(treq)) {
-        goto map_more;
-    }
-}
-
-static void lnvm_treq_retry_map(void *opaque)
-{
-    AIOTblRequest *treq = opaque;
-
-    qemu_bh_delete(treq->bh);
-    treq->bh = NULL;
-    lnvm_treq_map(treq);
-}
-
-static void lnvm_treq_sched_retry(void *opaque)
-{
-    AIOTblRequest *treq = opaque;
-
-    treq->bh = qemu_bh_new(lnvm_treq_retry_map, treq);
-    qemu_bh_schedule(treq->bh);
-}
-
-static int lnvm_treq_unmap(AIOTblRequest *treq, size_t offset, size_t len)
-{
-    int unmapped = 0;
-    unsigned int i;
-    QEMUIOVector *qiov = &treq->iov;
-    struct iovec *iov = qiov->iov;
-
-    for (i = 0; len && i < qiov->niov; i++) {
-        if (offset < iov[i].iov_len) {
-            assert(iov[i].iov_len <= len);
-            len -= iov[i].iov_len;
-            dma_memory_unmap(treq->sg->as, iov[i].iov_base, iov[i].iov_len,
-                DMA_DIRECTION_FROM_DEVICE, iov[i].iov_len);
-            unmapped++;
-        } else {
-            offset -= iov[i].iov_len;
-        }
-    }
-    return unmapped;
-}
-
-static void lnvm_treq_done(void *opaque)
-{
-    AIOTblRequest *treq = opaque;
-    NvmeRequest *req = treq->req;
-    NvmeSQueue *sq = req->sq;
-    NvmeCtrl *n = req->sq->ctrl;
-    NvmeCQueue *cq = n->cq[sq->cqid];
-
-    qemu_bh_delete(treq->bh);
-    treq->bh = NULL;
-
-    qemu_iovec_destroy(&treq->iov);
-    qemu_sglist_destroy(treq->sg);
-    treq->req->status = NVME_SUCCESS;
-    nvme_enqueue_req_completion(cq, treq->req);
-    g_free(treq);
-}
-
-static int lnvm_treq_do_copy(AIOTblRequest *treq)
-{
-    size_t start, copied;
-    void *tbl = treq->req->ns->tbl;
-
-    start = treq->b_copied;
-
-    copied = qemu_iovec_from_buf(&treq->iov, start, tbl,
-        (treq->iov.size - treq->b_copied));
-    treq->b_copied += copied;
-
-    lnvm_treq_unmap(treq, start, copied);
-    if (treq->b_copied == treq->sg->size) {
-        treq->bh = qemu_bh_new(lnvm_treq_done, treq);
-        qemu_bh_schedule(treq->bh);
-        return 0;
-    } else {
-        return 1;
-    }
-}
-
-static void coroutine_fn lnvm_treq_copy(void *opaque)
-{
-    NvmeRequest *req = opaque;
-    AIOTblRequest *treq = g_malloc0(sizeof(AIOTblRequest));
-
-    treq->req = req;
-    treq->sg = &req->qsg;
-    qemu_iovec_init(&treq->iov, treq->sg->nsg);
-    treq->io_func = lnvm_treq_do_copy;
-
-    lnvm_treq_map(treq);
-    return;
-}
-
-static uint16_t lnvm_get_p2l_tbl(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
+static uint16_t lnvm_get_l2p_tbl(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
 {
     NvmeNamespace *ns;
-    LnvmGetP2lTbl *gtbl = (LnvmGetP2lTbl*)cmd;
+    LnvmGetL2PTbl *gtbl = (LnvmGetL2PTbl*)cmd;
     uint64_t slba = le64_to_cpu(gtbl->slba);
     uint16_t nlb = le16_to_cpu(gtbl->nlb);
     uint64_t prp1 = le64_to_cpu(gtbl->prp1);
     uint64_t prp2 = le64_to_cpu(gtbl->prp2);
     uint32_t nsid = le32_to_cpu(gtbl->nsid);
-    Coroutine *co;
 
     if (nsid == 0 || nsid > n->num_namespaces) {
         return NVME_INVALID_NSID | NVME_DNR;
     }
     ns = &n->namespaces[nsid-1];
 
-    if ((ns->tbl + nlb) >= (ns->tbl + ns->tbl_entries)) {
+    if (slba >= ns->tbl_entries) {
         nvme_set_error_page(n, req->sq->sqid, cmd->cid, NVME_INVALID_FIELD,
-            offsetof(LnvmGetP2lTbl, nlb), 0, ns->id);
-        return NVME_INVALID_FIELD | NVME_DNR;
+            offsetof(LnvmGetL2PTbl, slba), 0, ns->id);
     }
-    if (nvme_map_prp(&req->qsg, prp1, prp2, (nlb << BDRV_SECTOR_BITS), n)) {
+    if ((slba + nlb) >= ns->tbl_entries) {
         nvme_set_error_page(n, req->sq->sqid, cmd->cid, NVME_INVALID_FIELD,
-            offsetof(LnvmGetP2lTbl, prp1), 0, ns->id);
+            offsetof(LnvmGetL2PTbl, nlb), 0, ns->id);
         return NVME_INVALID_FIELD | NVME_DNR;
     }
 
-    req->slba = ns->tbl_dsk_start_offset + slba;
-    req->nlb = nlb;
-    req->ns = ns;
-    req->meta_size = 0;
-    req->status = NVME_SUCCESS;
-
-    co = qemu_coroutine_create(lnvm_treq_copy);
-    qemu_coroutine_enter(co, req);
-    return NVME_NO_COMPLETE;
+    fprintf(stderr, "NVME: lnvm_get_l2p_tbl: STUB! (slba:%"SCNu64", "
+            "nlb:%"SCNu16", nsid:%"SCNu32", prp1:%"SCNx64", prp2:%"SCNx64")\n",
+            slba, nlb, nsid, prp1, prp2);
+    return NVME_SUCCESS;
 }
 
 static uint16_t lnvm_get_bb_tbl(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
@@ -2256,47 +2110,6 @@ static uint16_t lnvm_get_bb_tbl(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
             off, prp1, prp2, prp1_len);
 
     return NVME_SUCCESS; /*TODO: STUB*/
-}
-
-static void flush_tbls_io_complete(void *opaque, int ret)
-{
-    AIOTblFlushRequest *tfreq = opaque;
-    NvmeRequest *req = tfreq->req;
-    NvmeSQueue *sq = req->sq;
-    NvmeCtrl *n = sq->ctrl;
-    NvmeCQueue *cq = n->cq[sq->cqid];
-
-    bdrv_acct_done(n->conf.bs, &req->acct);
-    req->status = !ret ? NVME_SUCCESS : NVME_INTERNAL_DEV_ERROR;
-    nvme_enqueue_req_completion(cq, req);
-    g_free(tfreq);
-}
-
-static uint16_t lnvm_flush_tbls(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
-{
-    /*
-     * [FIXME] lock tbl & disk for I/O while processing request
-     */
-    NvmeNamespace *ns;
-    uint32_t nsid = le32_to_cpu(cmd->nsid);
-    uint64_t slba;
-    AIOTblFlushRequest *tfreq;
-
-    ns = &n->namespaces[nsid-1];
-    tfreq = g_malloc0(sizeof(AIOTblFlushRequest));
-    tfreq->req = req;
-    tfreq->iov.iov_base = (void *)ns->tbl;
-    tfreq->iov.iov_len = ns->tbl_entries * sizeof(uint32_t);
-    qemu_iovec_init_external(&tfreq->qiov, &tfreq->iov, 1);
-
-    req->ns = ns;
-    req->nlb = tfreq->iov.iov_len >> BDRV_SECTOR_BITS;
-    slba = ns->tbl_dsk_start_offset >> BDRV_SECTOR_BITS;
-
-    bdrv_acct_start(n->conf.bs, &req->acct, tfreq->iov.iov_len, BDRV_ACCT_WRITE);
-    req->aiocb = bdrv_aio_writev(n->conf.bs, slba, &tfreq->qiov,
-        req->nlb, flush_tbls_io_complete, tfreq);
-    return NVME_NO_COMPLETE;
 }
 
 static uint16_t nvme_admin_cmd(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
@@ -2342,19 +2155,14 @@ static uint16_t nvme_admin_cmd(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
             return lnvm_set_responsibility(n, cmd);
         }
         return NVME_INVALID_OPCODE | NVME_DNR;
-    case LNVM_ADM_CMD_GET_P2L_TBL:
+    case LNVM_ADM_CMD_GET_L2P_TBL:
         if (lnvm_dev(n)) {
-            return lnvm_get_p2l_tbl(n, cmd, req);
+            return lnvm_get_l2p_tbl(n, cmd, req);
         }
         return NVME_INVALID_OPCODE | NVME_DNR;
     case LNVM_ADM_CMD_GET_BB_TBL:
         if (lnvm_dev(n)) {
             return lnvm_get_bb_tbl(n, cmd, req);
-        }
-        return NVME_INVALID_OPCODE | NVME_DNR;
-    case LNVM_ADM_CMD_FLUSH_TBLS:
-        if (lnvm_dev(n)) {
-            return lnvm_flush_tbls(n, cmd, req);
         }
         return NVME_INVALID_OPCODE | NVME_DNR;
     case NVME_ADM_CMD_ACTIVATE_FW:

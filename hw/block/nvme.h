@@ -175,11 +175,10 @@ enum NvmeAdminCommands {
 
 enum LnvmAdminCommands {
     LNVM_ADM_CMD_IDENTIFY          = 0xc0,
-    LNVM_ADM_CMD_GET_FEATURES      = 0xc2,
-    LNVM_ADM_CMD_SET_FEATURES      = 0xc3,
-    LNVM_ADM_CMD_GET_P2L_TBL       = 0xc4,
-    LNVM_ADM_CMD_GET_BB_TBL        = 0xc5,
-    LNVM_ADM_CMD_FLUSH_TBLS        = 0xc6,
+    LNVM_ADM_CMD_GET_FEATURES      = 0xc1,
+    LNVM_ADM_CMD_SET_FEATURES      = 0xc2,
+    LNVM_ADM_CMD_GET_L2P_TBL       = 0xc3,
+    LNVM_ADM_CMD_GET_BB_TBL        = 0xc4,
 };
 
 enum NvmeIoCommands {
@@ -196,7 +195,7 @@ enum LnvmDmCommands {
     LNVM_CMD_ERASE_ASYNC       = 0x81,
 };
 
-typedef struct LnvmGetP2lTbl {
+typedef struct LnvmGetL2PTbl {
     uint8_t opcode;
     uint8_t flags;
     uint16_t cid;
@@ -207,7 +206,7 @@ typedef struct LnvmGetP2lTbl {
     uint64_t slba;
     uint16_t nlb;
     uint16_t rsvd2[7];
-} LnvmGetP2lTbl;
+} LnvmGetL2PTbl;
 
 typedef struct LnvmGetBBTbl {
   uint8_t opcode;
@@ -768,26 +767,6 @@ typedef struct NvmeRequest {
     QEMUSGList              qsg;
     QTAILQ_ENTRY(NvmeRequest)entry;
 } NvmeRequest;
-
-typedef struct AIOTblRequest AIOTblRequest;
-typedef int LNVMETblIOFunc(AIOTblRequest *treq);
-
-struct AIOTblRequest {
-    int sg_cur_ndx;
-    dma_addr_t sg_cur_byte;
-    QEMUIOVector iov;
-    QEMUSGList *sg;
-    QEMUBH *bh;
-    size_t b_copied;
-    LNVMETblIOFunc *io_func;
-    NvmeRequest *req;
-};
-
-typedef struct AIOTblFlushRequest {
-    NvmeRequest *req;
-    struct iovec iov;
-    struct QEMUIOVector qiov;
-} AIOTblFlushRequest;
 
 typedef struct DMAOff {
     QEMUSGList *qsg;
