@@ -733,15 +733,15 @@ static void nvme_interleave_sgl(NvmeCtrl *n, QEMUSGList *qsg, uint8_t *buf,
     }
 }
 
-static void update_tbl_range(NvmeNamespace *ns, uint32_t tbl_off,
-    uint32_t host_lba, uint16_t nlb)
+static void update_l2p_range(NvmeNamespace *ns, uint32_t lba_off,
+    uint32_t pba, uint16_t nlb)
 {
     uint32_t i;
 
-    assert((tbl_off + nlb) < (ns->tbl_entries - 1));
+    assert((lba_off + nlb) < (ns->tbl_entries - 1));
 
-    for(i = tbl_off; i < (tbl_off+nlb); i++) {
-        ns->tbl[i] = host_lba++;
+    for(i = lba_off; i < (lba_off+nlb); i++) {
+        ns->tbl[i] = pba++;
     }
 }
 
@@ -788,17 +788,12 @@ static void nvme_rw_cb(void *opaque, int ret)
         }
     } else {
         if (lnvm_dev(n) && req->is_write) {
-            update_tbl_range(ns, req->slba, req->host_lba, req->nlb);
+            update_l2p_range(ns, req->lnvm_lba, req->slba, req->nlb);
         }
     }
 
     qemu_sglist_destroy(&req->qsg);
     nvme_enqueue_req_completion(cq, req);
-}
-
-static uint32_t host_lba(NvmeCmd *cmd)
-{
-    return (cmd->cdw13 & 0xffffff00) | ((cmd->cdw12 >> 16) & 0xff);
 }
 
 static uint16_t nvme_rw(NvmeCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd,
@@ -842,6 +837,7 @@ static uint16_t nvme_rw(NvmeCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd,
 
         elba = phys_slba + nlb - 1;
         slba = phys_slba - 1;
+        req->lnvm_lba = le64_to_cpu(rw->slba);
     } else {
         elba = slba + nlb;
     }
@@ -902,9 +898,6 @@ static uint16_t nvme_rw(NvmeCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd,
     if (req->is_write) {
         bitmap_set(ns->util, slba, nlb);
         bitmap_clear(ns->uncorrectable, slba, nlb);
-    }
-    if (req->is_write && lnvm_dev(n)) {
-        req->host_lba = host_lba(cmd);
     }
     if (!separate && (!(ctrl & NVME_RW_PRINFO_PRACT) ||
             ms != sizeof(NvmeDifTuple))) {
@@ -979,7 +972,7 @@ static uint16_t nvme_rw(NvmeCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd,
                 return NVME_INTERNAL_DEV_ERROR;
             }
             if (lnvm_dev(n)) {
-                update_tbl_range(ns, req->slba, req->host_lba, nlb);
+                update_l2p_range(ns, req->lnvm_lba, req->slba, nlb);
             }
         }
 
