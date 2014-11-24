@@ -121,6 +121,7 @@
 #define LNVM_FEAT_EXT_START 64
 #define LNVM_FEAT_EXT_END 127
 #define LNVM_PBA_UNMAPPED 0
+#define LNVM_LBA_UNMAPPED UINT32_MAX
 
 static void nvme_process_sq(void *opaque);
 static void lnvm_treq_sched_retry(void *);
@@ -151,6 +152,15 @@ static int lnvm_feature_set(LnvmCtrl *ln, uint32_t ndx, uint8_t val)
         bitmap_clear((unsigned long*)&ln->id_features.map, ndx, 1);
     }
     return 0;
+}
+
+static void lnvm_tbl_initialize(NvmeNamespace *ns)
+{
+    uint32_t len = ns->tbl_entries;
+    uint32_t i;
+    for (i = 0; i < len; i++) {
+        ns->tbl[i] = LNVM_LBA_UNMAPPED;
+    }
 }
 
 static int nvme_check_sqid(NvmeCtrl *n, uint16_t sqid)
@@ -1913,8 +1923,9 @@ static void nvme_partition_ns(NvmeNamespace *ns, uint8_t lba_idx)
             g_free(ns->tbl);
         }
         ns->tbl = qemu_blockalign(n->conf.bs, lnvm_tbl_size(ns));
-        memset(ns->tbl, 0, lnvm_tbl_size(ns));
+        lnvm_tbl_initialize(ns);
     } else {
+        ns->tbl = NULL;
         blks = ns->ns_blks;
         ns->tbl_entries = 0;
     }
