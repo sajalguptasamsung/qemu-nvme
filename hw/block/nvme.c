@@ -1862,14 +1862,15 @@ static uint32_t lnvm_tbl_size(NvmeNamespace *ns)
 static void lnvm_init_ns_chnls(NvmeNamespace *ns, uint8_t lba_idx)
 {
     NvmeCtrl *n = ns->ctrl;
-    LnvmIdCtrl *ln = &n->lnvm_ctrl.id_ctrl;
+    LnvmCtrl *ln = &n->lnvm_ctrl;
     uint64_t page_size = 1 << ns->id_ns.lbaf[lba_idx].ds;
     LnvmIdChannel *c;
-    uint16_t ns_chnls = le16_to_cpu(ln->nschannels);
+    uint16_t ns_chnls = le16_to_cpu(ln->id_ctrl.nschannels);
     uint64_t chnl_blks = ns->ns_blks / ns_chnls;
     int i;
 
     for (i = 0; i < ns_chnls; i++) {
+        c = &ln->channels[ns->id * ns_chnls + i];
         c->gran_read = cpu_to_le64(page_size);
         c->gran_write = c->gran_read;
         c->gran_erase = cpu_to_le64(page_size * 128);
