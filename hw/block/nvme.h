@@ -726,6 +726,8 @@ static inline void _nvme_check_size(void)
     QEMU_BUILD_BUG_ON(sizeof(NvmeCqe) != 16);
     QEMU_BUILD_BUG_ON(sizeof(NvmeDsmRange) != 16);
     QEMU_BUILD_BUG_ON(sizeof(NvmeCmd) != 64);
+    QEMU_BUILD_BUG_ON(sizeof(LnvmGetL2PTbl) != 64);
+    QEMU_BUILD_BUG_ON(sizeof(LnvmGetBBTbl) != 64);
     QEMU_BUILD_BUG_ON(sizeof(NvmeDeleteQ) != 64);
     QEMU_BUILD_BUG_ON(sizeof(NvmeCreateCq) != 64);
     QEMU_BUILD_BUG_ON(sizeof(NvmeCreateSq) != 64);
