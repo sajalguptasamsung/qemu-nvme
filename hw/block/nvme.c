@@ -2112,6 +2112,33 @@ static uint16_t lnvm_get_bb_tbl(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
     return NVME_SUCCESS; /*TODO: STUB*/
 }
 
+static int lnvm_flush_tbls(NvmeCtrl *n)
+{
+    uint32_t i;
+    for (i = 0; i < n->num_namespaces; i++) {
+        NvmeNamespace *ns = &n->namespaces[i];
+        if (bdrv_pwrite_sync(n->conf.bs, ns->tbl_dsk_start_offset,
+                             ns->tbl, lnvm_tbl_size(ns))) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
+static int lnvm_read_tbls(NvmeCtrl *n)
+{
+    uint32_t i;
+    for (i = 0; i < n->num_namespaces; i++) {
+        NvmeNamespace *ns = &n->namespaces[i];
+        uint32_t tbl_size = lnvm_tbl_size(ns);
+        if (bdrv_pread(n->conf.bs, ns->tbl_dsk_start_offset,
+                       ns->tbl, tbl_size) != tbl_size) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
 static uint16_t nvme_admin_cmd(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
 {
     switch (cmd->opcode) {
@@ -2248,6 +2275,7 @@ static void nvme_clear_ctrl(NvmeCtrl *n)
     }
 
     bdrv_flush(n->conf.bs);
+    lnvm_flush_tbls(n);
     n->bar.cc = 0;
     n->features.temp_thresh = 0x14d;
     n->temp_warn_issued = 0;
@@ -2657,7 +2685,7 @@ static int lnvm_init(NvmeCtrl *n)
             c->laddr_end = cpu_to_le64((chnl_blks * j) + chnl_blks);
         }
     }
-    return 0;
+    return lnvm_read_tbls(n);
 }
 
 static int nvme_init(PCIDevice *pci_dev)
@@ -2691,7 +2719,7 @@ static int nvme_init(PCIDevice *pci_dev)
     nvme_init_ctrl(n);
     nvme_init_namespaces(n);
     if (lnvm_dev(n)) {
-        lnvm_init(n);
+        return lnvm_init(n);
     }
     return 0;
 }
