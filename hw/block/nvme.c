@@ -776,7 +776,7 @@ static void nvme_rw_cb(void *opaque, int ret)
             bitmap_clear(ns->util, req->slba, req->nlb);
         }
     } else {
-        if (req->is_write) {
+        if (lnvm_dev(n) && req->is_write) {
             update_tbl_range(ns, req->slba, req->host_lba, req->nlb);
         }
     }
