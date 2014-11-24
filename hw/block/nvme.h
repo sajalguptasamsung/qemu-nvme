@@ -300,12 +300,26 @@ typedef struct NvmeRwCmd {
     uint16_t    nlb;
     uint16_t    control;
     uint32_t    dsmgmt;
-/*    uint32_t    reftag;
+    uint32_t    reftag;
     uint16_t    apptag;
     uint16_t    appmask;
-*/
-    uint64_t    phys_slba;
 } NvmeRwCmd;
+
+typedef struct LnvmRwCmd {
+    uint8_t     opcode;
+    uint8_t     flags;
+    uint16_t    cid;
+    uint32_t    nsid;
+    uint64_t    rsvd2;
+    uint64_t    mptr;
+    uint64_t    prp1;
+    uint64_t    prp2;
+    uint64_t    slba;
+    uint16_t    nlb;
+    uint16_t    control;
+    uint32_t    dsmgmt;
+    uint64_t    phys_slba;
+} LnvmRwCmd;
 
 enum {
     NVME_RW_LR                  = 1 << 15,
@@ -719,6 +733,7 @@ static inline void _nvme_check_size(void)
     QEMU_BUILD_BUG_ON(sizeof(NvmeIdentify) != 64);
     QEMU_BUILD_BUG_ON(sizeof(NvmeRwCmd) != 64);
     QEMU_BUILD_BUG_ON(sizeof(NvmeDsmCmd) != 64);
+    QEMU_BUILD_BUG_ON(sizeof(LnvmRwCmd) != 64);
     QEMU_BUILD_BUG_ON(sizeof(NvmeRangeType) != 64);
     QEMU_BUILD_BUG_ON(sizeof(NvmeErrorLog) != 64);
     QEMU_BUILD_BUG_ON(sizeof(NvmeFwSlotInfoLog) != 512);

@@ -120,6 +120,7 @@
 #define LNVM_MAX_CHNLS_PR_IDENT (4096 - sizeof(LnvmIdCtrl)) / sizeof(LnvmIdChannel)
 #define LNVM_FEAT_EXT_START 64
 #define LNVM_FEAT_EXT_END 127
+#define LNVM_PBA_UNMAPPED 0
 
 static void nvme_process_sq(void *opaque);
 static void lnvm_treq_sched_retry(void *);
@@ -800,7 +801,6 @@ static uint16_t nvme_rw(NvmeCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd,
     uint64_t prp1 = le64_to_cpu(rw->prp1);
     uint64_t prp2 = le64_to_cpu(rw->prp2);
     uint64_t mptr = le64_to_cpu(rw->mptr);
-    uint64_t phys_slba = le64_to_cpu(rw->phys_slba);
 
     uint64_t offset;
     uint64_t elba;
@@ -821,7 +821,10 @@ static uint16_t nvme_rw(NvmeCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd,
          * value. i.e. substract 1 to get the actual address. 0 is used as "not mapped" and
          * is not a valid command.
         */
-        if (!phys_slba) {
+        LnvmRwCmd *lrw = (LnvmRwCmd *)cmd;
+        uint64_t phys_slba = le64_to_cpu(lrw->phys_slba);
+
+        if (phys_slba == LNVM_PBA_UNMAPPED) {
             nvme_set_error_page(n, req->sq->sqid, cmd->cid, NVME_LBA_RANGE,
                 offsetof(NvmeRwCmd, nlb), slba + nlb, ns->id);
             return NVME_LBA_RANGE | NVME_DNR;
