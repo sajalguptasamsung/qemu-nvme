@@ -318,7 +318,7 @@ typedef struct LnvmRwCmd {
     uint16_t    nlb;
     uint16_t    control;
     uint32_t    dsmgmt;
-    uint64_t    phys_slba;
+    uint64_t    spba;
 } LnvmRwCmd;
 
 enum {

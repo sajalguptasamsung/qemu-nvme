@@ -822,21 +822,21 @@ static uint16_t nvme_rw(NvmeCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd,
 
     if (lnvm_dev(n)) {
         /* In the case of a LightNVM device. The slba is the logical address, while the actual
-         * physical block address is stored in Command Dword 14-15. The phys_slba is a 1-based
+         * physical block address is stored in Command Dword 14-15. The spba is a 1-based
          * value. i.e. substract 1 to get the actual address. 0 is used as "not mapped" and
          * is not a valid command.
         */
         LnvmRwCmd *lrw = (LnvmRwCmd *)cmd;
-        uint64_t phys_slba = le64_to_cpu(lrw->phys_slba);
+        uint64_t spba = le64_to_cpu(lrw->spba);
 
-        if (phys_slba == LNVM_PBA_UNMAPPED) {
+        if (spba == LNVM_PBA_UNMAPPED) {
             nvme_set_error_page(n, req->sq->sqid, cmd->cid, NVME_LBA_RANGE,
                 offsetof(NvmeRwCmd, nlb), slba + nlb, ns->id);
             return NVME_LBA_RANGE | NVME_DNR;
         }
 
-        elba = phys_slba + nlb - 1;
-        slba = phys_slba - 1;
+        elba = spba + nlb - 1;
+        slba = spba - 1;
         req->lnvm_lba = le64_to_cpu(rw->slba);
     } else {
         elba = slba + nlb;
