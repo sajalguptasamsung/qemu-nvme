@@ -204,8 +204,9 @@ typedef struct LnvmGetL2PTbl {
     uint64_t prp1;
     uint64_t prp2;
     uint64_t slba;
-    uint16_t nlb;
-    uint16_t rsvd2[7];
+    uint32_t nlb;
+    uint16_t prp1_len;
+    uint16_t rsvd2[5];
 } LnvmGetL2PTbl;
 
 typedef struct LnvmGetBBTbl {

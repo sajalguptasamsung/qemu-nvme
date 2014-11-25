@@ -2071,10 +2071,12 @@ static uint16_t lnvm_get_l2p_tbl(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
     NvmeNamespace *ns;
     LnvmGetL2PTbl *gtbl = (LnvmGetL2PTbl*)cmd;
     uint64_t slba = le64_to_cpu(gtbl->slba);
-    uint16_t nlb = le16_to_cpu(gtbl->nlb);
+    uint32_t nlb = le32_to_cpu(gtbl->nlb);
     uint64_t prp1 = le64_to_cpu(gtbl->prp1);
     uint64_t prp2 = le64_to_cpu(gtbl->prp2);
     uint32_t nsid = le32_to_cpu(gtbl->nsid);
+    uint64_t prp1_len = le16_to_cpu(gtbl->prp1_len);
+    uint64_t xfer_len = nlb * sizeof(uint32_t);
 
     if (nsid == 0 || nsid > n->num_namespaces) {
         return NVME_INVALID_NSID | NVME_DNR;
@@ -2084,16 +2086,25 @@ static uint16_t lnvm_get_l2p_tbl(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
     if (slba >= ns->tbl_entries) {
         nvme_set_error_page(n, req->sq->sqid, cmd->cid, NVME_INVALID_FIELD,
             offsetof(LnvmGetL2PTbl, slba), 0, ns->id);
+        return NVME_INVALID_FIELD | NVME_DNR;
     }
-    if ((slba + nlb) >= ns->tbl_entries) {
+    if ((slba + nlb) > ns->tbl_entries) {
         nvme_set_error_page(n, req->sq->sqid, cmd->cid, NVME_INVALID_FIELD,
             offsetof(LnvmGetL2PTbl, nlb), 0, ns->id);
         return NVME_INVALID_FIELD | NVME_DNR;
     }
+    if ((prp1_len << 12) < xfer_len) {
+        nvme_set_error_page(n, req->sq->sqid, cmd->cid, NVME_INVALID_FIELD,
+            offsetof(LnvmGetL2PTbl, prp1_len), 0, ns->id);
+        return NVME_INVALID_FIELD | NVME_DNR;
+    }
 
-    fprintf(stderr, "NVME: lnvm_get_l2p_tbl: STUB! (slba:%"SCNu64", "
-            "nlb:%"SCNu16", nsid:%"SCNu32", prp1:%"SCNx64", prp2:%"SCNx64")\n",
-            slba, nlb, nsid, prp1, prp2);
+    if (nvme_dma_read_prp(n, (uint8_t *)&ns->tbl[slba], xfer_len,
+                          prp1, prp2)) {
+        nvme_set_error_page(n, req->sq->sqid, cmd->cid, NVME_INVALID_FIELD,
+                            offsetof(LnvmGetL2PTbl, prp1), 0, ns->id);
+        return NVME_INVALID_FIELD | NVME_DNR;
+    }
     return NVME_SUCCESS;
 }
 
