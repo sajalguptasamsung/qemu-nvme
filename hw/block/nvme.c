@@ -122,6 +122,7 @@
 #define LNVM_FEAT_EXT_END 127
 #define LNVM_PBA_UNMAPPED 0
 #define LNVM_LBA_UNMAPPED UINT64_MAX
+#define LNVM_PAGES_PR_BLK 128
 
 static void nvme_process_sq(void *opaque);
 
@@ -1828,29 +1829,21 @@ static uint64_t ns_blks(NvmeNamespace *ns, uint8_t lba_idx)
 {
     NvmeCtrl *n = ns->ctrl;
     NvmeIdNs *id_ns = &ns->id_ns;
-    uint64_t size = n->ns_size;
-    uint32_t entry_siz, tbl_cap, nunits;
-    uint64_t unit_siz, tbl_blk_siz, leftover, blks;
+    uint64_t ns_size = n->ns_size;
 
-    /*LNVM devices need to reserve space for persisting the P2L table*/
+    uint32_t lba_ds = (1 << id_ns->lbaf[lba_idx].ds);
+    uint32_t lba_sz = lba_ds + n->meta;
+
     if (lnvm_dev(n)) {
-        entry_siz = (1 << id_ns->lbaf[lba_idx].ds) + n->meta;
-        tbl_blk_siz = BDRV_SECTOR_SIZE;
-        tbl_cap = tbl_blk_siz / sizeof(*(ns->tbl));
-        unit_siz = tbl_blk_siz + (tbl_cap * entry_siz);
-        nunits = size / unit_siz;
+        /* p_ent: LBA + md + L2P entry */
+        uint64_t p_ent = lba_sz + sizeof(*(ns->tbl));
+        uint64_t p_ents = ns_size / p_ent;
+        uint64_t units = p_ents / LNVM_PAGES_PR_BLK;
 
-        leftover = size - (nunits * unit_siz);
-
-        blks = nunits * tbl_cap;
-        if (leftover > (entry_siz + tbl_blk_siz)) {
-            leftover -= tbl_blk_siz;
-            blks += leftover / entry_siz;
-        }
+        return units * LNVM_PAGES_PR_BLK;
     } else {
-        blks = size / ((1 << id_ns->lbaf[lba_idx].ds) + n->meta);
+        return ns_size / lba_sz;
     }
-    return blks;
 }
 
 static uint64_t ns_bdrv_blks(NvmeNamespace *ns, uint64_t blks, uint8_t lba_idx)
@@ -1879,7 +1872,7 @@ static void lnvm_init_ns_chnls(NvmeNamespace *ns, uint8_t lba_idx)
         c = &ln->channels[ns->id * ns_chnls + i];
         c->gran_read = cpu_to_le64(page_size);
         c->gran_write = c->gran_read;
-        c->gran_erase = cpu_to_le64(page_size * 128);
+        c->gran_erase = cpu_to_le64(page_size * LNVM_PAGES_PR_BLK);
         c->laddr_begin = cpu_to_le64(chnl_blks * i);
         c->laddr_end = cpu_to_le64((chnl_blks * i) + chnl_blks);
     }
@@ -2687,7 +2680,7 @@ static int lnvm_init(NvmeCtrl *n)
             c = &n->lnvm_ctrl.channels[i * ns_chnls + j];
             c->queue_size = cpu_to_le64(64);
             c->gran_read = c->gran_write = cpu_to_le64(page_size);
-            c->gran_erase = cpu_to_le64(page_size * 128);
+            c->gran_erase = cpu_to_le64(page_size * LNVM_PAGES_PR_BLK);
             c->oob_size = cpu_to_le64(0);
             c->t_r = c->t_sqr = cpu_to_le32(10000);
             c->t_w = c->t_sqw = cpu_to_le32(10000);
