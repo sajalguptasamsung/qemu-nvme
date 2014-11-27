@@ -121,7 +121,7 @@
 #define LNVM_FEAT_EXT_START 64
 #define LNVM_FEAT_EXT_END 127
 #define LNVM_PBA_UNMAPPED 0
-#define LNVM_LBA_UNMAPPED UINT32_MAX
+#define LNVM_LBA_UNMAPPED UINT64_MAX
 
 static void nvme_process_sq(void *opaque);
 
@@ -732,14 +732,15 @@ static void nvme_interleave_sgl(NvmeCtrl *n, QEMUSGList *qsg, uint8_t *buf,
     }
 }
 
-static void update_l2p_range(NvmeNamespace *ns, uint32_t lba_off,
-    uint32_t pba, uint16_t nlb)
+static void update_l2p_range(NvmeNamespace *ns, uint64_t lba_off,
+    uint64_t pba, uint16_t nlb)
 {
-    uint32_t i;
+    uint64_t end = lba_off + nlb;
+    uint64_t i;
 
-    assert((lba_off + nlb) < (ns->tbl_entries - 1));
+    assert(end <= (ns->tbl_entries));
 
-    for(i = lba_off; i < (lba_off+nlb); i++) {
+    for(i = lba_off; i < end; i++) {
         ns->tbl[i] = pba++;
     }
 }
@@ -1835,7 +1836,7 @@ static uint64_t ns_blks(NvmeNamespace *ns, uint8_t lba_idx)
     if (lnvm_dev(n)) {
         entry_siz = (1 << id_ns->lbaf[lba_idx].ds) + n->meta;
         tbl_blk_siz = BDRV_SECTOR_SIZE;
-        tbl_cap = tbl_blk_siz / sizeof(uint32_t);
+        tbl_cap = tbl_blk_siz / sizeof(*(ns->tbl));
         unit_siz = tbl_blk_siz + (tbl_cap * entry_siz);
         nunits = size / unit_siz;
 
@@ -1861,7 +1862,7 @@ static uint64_t ns_bdrv_blks(NvmeNamespace *ns, uint64_t blks, uint8_t lba_idx)
 
 static uint32_t lnvm_tbl_size(NvmeNamespace *ns)
 {
-    return ns->tbl_entries * sizeof(uint32_t);
+    return ns->tbl_entries * sizeof(*(ns->tbl));
 }
 
 static void lnvm_init_ns_chnls(NvmeNamespace *ns, uint8_t lba_idx)
@@ -2076,7 +2077,7 @@ static uint16_t lnvm_get_l2p_tbl(NvmeCtrl *n, NvmeCmd *cmd, NvmeRequest *req)
     uint64_t prp2 = le64_to_cpu(gtbl->prp2);
     uint32_t nsid = le32_to_cpu(gtbl->nsid);
     uint64_t prp1_len = le16_to_cpu(gtbl->prp1_len);
-    uint64_t xfer_len = nlb * sizeof(uint32_t);
+    uint64_t xfer_len = nlb * sizeof(*(ns->tbl));
 
     if (nsid == 0 || nsid > n->num_namespaces) {
         return NVME_INVALID_NSID | NVME_DNR;
