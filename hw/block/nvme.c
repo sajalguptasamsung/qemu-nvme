@@ -2690,7 +2690,7 @@ static int lnvm_init(NvmeCtrl *n)
             c->laddr_end = cpu_to_le64((chnl_blks * j) + chnl_blks);
         }
     }
-    return lnvm_read_tbls(n);
+    return (n->lnvm_ctrl.read_l2p_tbl) ? lnvm_read_tbls(n) : 0;
 }
 
 static int nvme_init(PCIDevice *pci_dev)
@@ -2786,6 +2786,7 @@ static Property nvme_props[] = {
     DEFINE_PROP_UINT8("ltype", NvmeCtrl, lnvm_ctrl.id_ctrl.nvm_type,
         NVM_BLOCK_ADDRESSABLE),
     DEFINE_PROP_UINT16("lchannels", NvmeCtrl, lnvm_ctrl.id_ctrl.nschannels, 4),
+    DEFINE_PROP_UINT8("lreadl2ptbl", NvmeCtrl, lnvm_ctrl.read_l2p_tbl, 1),
     DEFINE_PROP_END_OF_LIST(),
 };
 

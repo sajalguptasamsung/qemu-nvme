@@ -838,6 +838,7 @@ typedef struct LnvmCtrl {
     LnvmIdCtrl     id_ctrl;
     LnvmIdFeatures id_features;
     LnvmIdChannel  *channels;
+    uint8_t        read_l2p_tbl;
 } LnvmCtrl;
 
 enum LnvmFeatures {
