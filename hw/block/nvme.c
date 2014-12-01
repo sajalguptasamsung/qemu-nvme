@@ -832,8 +832,8 @@ static uint16_t nvme_rw(NvmeCtrl *n, NvmeNamespace *ns, NvmeCmd *cmd,
 
         if (spba == LNVM_PBA_UNMAPPED) {
             nvme_set_error_page(n, req->sq->sqid, cmd->cid, NVME_LBA_RANGE,
-                offsetof(NvmeRwCmd, nlb), slba + nlb, ns->id);
-            return NVME_LBA_RANGE | NVME_DNR;
+                offsetof(LnvmRwCmd, spba), slba + nlb, ns->id);
+            return NVME_INVALID_FIELD | NVME_DNR;
         }
 
         elba = spba + nlb - 1;
