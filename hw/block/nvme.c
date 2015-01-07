@@ -2678,16 +2678,16 @@ static int lnvm_init(NvmeCtrl *n)
 
         for(j = 0; j < ns_chnls; j++) {
             c = &ln->channels[i * ns_chnls + j];
-            c->queue_size = cpu_to_le64(64);
-            c->gran_read = c->gran_write = cpu_to_le64(page_size);
-            c->gran_erase = cpu_to_le64(page_size * LNVM_PAGES_PR_BLK);
-            c->oob_size = cpu_to_le64(0);
+            c->laddr_begin = cpu_to_le64(chnl_blks * j);
+            c->laddr_end = cpu_to_le64((chnl_blks * j) + chnl_blks);
+            c->oob_size = cpu_to_le32(0);
+            c->queue_size = cpu_to_le32(64);
+            c->gran_read = c->gran_write = cpu_to_le32(page_size);
+            c->gran_erase = cpu_to_le32(page_size * LNVM_PAGES_PR_BLK);
             c->t_r = c->t_sqr = cpu_to_le32(10000);
             c->t_w = c->t_sqw = cpu_to_le32(10000);
             c->t_e = cpu_to_le32(100000);
-            c->io_sched = cpu_to_le32(LNVM_IOSCHED_CHANNEL);
-            c->laddr_begin = cpu_to_le64(chnl_blks * j);
-            c->laddr_end = cpu_to_le64((chnl_blks * j) + chnl_blks);
+            c->io_sched = LNVM_IOSCHED_CHANNEL;
         }
     }
     return (n->lnvm_ctrl.read_l2p_tbl) ? lnvm_read_tbls(n) : 0;
